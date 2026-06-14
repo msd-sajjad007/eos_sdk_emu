@@ -9,45 +9,38 @@ on:
 
 jobs:
 
-  # ─────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────
   # LINUX x64
-  # ─────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────
   build-linux:
     name: "Linux x64"
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout (recursive submodules)
+      - name: Checkout with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install system build tools
+      - name: Install build tools
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
             cmake ninja-build \
-            gcc-12 g++-12 \
+            gcc g++ \
             curl zip unzip tar git \
-            autoconf libtool pkg-config
+            pkg-config autoconf libtool
 
       - name: Setup vcpkg
-        id: vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
 
-      - name: Install vcpkg deps (Linux x64)
+      - name: Install vcpkg deps
         run: |
-          $VCPKG_ROOT/vcpkg install \
-            protobuf:x64-linux \
-            nlohmann-json:x64-linux \
-            nlohmann-fifo-map:x64-linux \
-            zstd:x64-linux
-        env:
-          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
+          $VCPKG_ROOT/vcpkg install protobuf:x64-linux nlohmann-json:x64-linux zstd:x64-linux
 
-      - name: Configure CMake (Linux x64)
+      - name: Configure CMake
         run: |
           cmake -G Ninja -Wno-dev \
             -DX64=ON \
@@ -55,159 +48,163 @@ jobs:
             -DVCPKG_TARGET_TRIPLET=x64-linux \
             "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -S . -B build/linux64
-        env:
-          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
       - name: Build
-        run: cmake --build build/linux64 --config Release
+        run: cmake --build build/linux64
 
-      - name: Install (outputs go to release/ in source root)
+      - name: Install
         run: cmake --install build/linux64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64
-          path: |
-            release/
-            debug/
+          path: release/
           if-no-files-found: warn
 
-  # ─────────────────────────────────────────────────────────────
-  # WINDOWS x86 + x64
-  # ─────────────────────────────────────────────────────────────
-  build-windows:
-    name: "Windows x86 + x64"
+  # ──────────────────────────────────────────
+  # WINDOWS x64
+  # ──────────────────────────────────────────
+  build-windows-x64:
+    name: "Windows x64"
     runs-on: windows-2022
 
     steps:
-      - name: Checkout (recursive submodules)
+      - name: Checkout with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Setup vcpkg
-        id: vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
 
-      - name: Install vcpkg deps (Windows x86)
+      - name: Install vcpkg deps (x64)
         shell: bash
         run: |
-          "$VCPKG_ROOT/vcpkg" install \
-            protobuf:x86-windows-static \
-            nlohmann-json:x86-windows-static \
-            nlohmann-fifo-map:x86-windows-static \
-            zstd:x86-windows-static \
-            abseil:x86-windows-static
-        env:
-          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
-
-      - name: Install vcpkg deps (Windows x64)
-        shell: bash
-        run: |
-          "$VCPKG_ROOT/vcpkg" install \
+          $VCPKG_ROOT/vcpkg install \
             protobuf:x64-windows-static \
             nlohmann-json:x64-windows-static \
-            nlohmann-fifo-map:x64-windows-static \
             zstd:x64-windows-static \
             abseil:x64-windows-static
-        env:
-          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
-      - name: Setup MSVC environment
+      - name: Setup MSVC (x64)
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: x86
+          arch: amd64
 
-      - name: Configure CMake (Windows x86)
-        shell: pwsh
+      - name: Configure CMake (x64)
+        shell: bash
         run: |
-          cmake -G Ninja -Wno-dev `
-            -DX86=ON `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DVCPKG_TARGET_TRIPLET=x86-windows-static `
-            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -S . -B build/win32
-        env:
-          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
-
-      - name: Build (Windows x86)
-        shell: pwsh
-        run: cmake --build build/win32 --config Release
-
-      - name: Install (Windows x86)
-        shell: pwsh
-        run: cmake --install build/win32
-
-      - name: Setup MSVC environment (x64)
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Configure CMake (Windows x64)
-        shell: pwsh
-        run: |
-          cmake -G Ninja -Wno-dev `
-            -DX64=ON `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
-            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+          cmake -G Ninja -Wno-dev \
+            -DX64=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static \
+            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -S . -B build/win64
-        env:
-          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
-      - name: Build (Windows x64)
-        shell: pwsh
-        run: cmake --build build/win64 --config Release
+      - name: Build (x64)
+        shell: bash
+        run: cmake --build build/win64
 
-      - name: Install (Windows x64)
-        shell: pwsh
+      - name: Install (x64)
+        shell: bash
         run: cmake --install build/win64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-x86-x64
-          path: |
-            release/
-            debug/
+          name: windows-x64
+          path: release/
           if-no-files-found: warn
 
-  # ─────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────
+  # WINDOWS x86
+  # ──────────────────────────────────────────
+  build-windows-x86:
+    name: "Windows x86"
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
+
+      - name: Install vcpkg deps (x86)
+        shell: bash
+        run: |
+          $VCPKG_ROOT/vcpkg install \
+            protobuf:x86-windows-static \
+            nlohmann-json:x86-windows-static \
+            zstd:x86-windows-static \
+            abseil:x86-windows-static
+
+      - name: Setup MSVC (x86)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_x86
+
+      - name: Configure CMake (x86)
+        shell: bash
+        run: |
+          cmake -G Ninja -Wno-dev \
+            -DX86=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVCPKG_TARGET_TRIPLET=x86-windows-static \
+            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -S . -B build/win32
+
+      - name: Build (x86)
+        shell: bash
+        run: cmake --build build/win32
+
+      - name: Install (x86)
+        shell: bash
+        run: cmake --install build/win32
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86
+          path: release/
+          if-no-files-found: warn
+
+  # ──────────────────────────────────────────
   # macOS x64
-  # ─────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────
   build-macos:
     name: "macOS x64"
     runs-on: macos-13
 
     steps:
-      - name: Checkout (recursive submodules)
+      - name: Checkout with submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install system build tools
+      - name: Install build tools
         run: brew install ninja cmake
 
       - name: Setup vcpkg
-        id: vcpkg
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
 
-      - name: Install vcpkg deps (macOS x64)
+      - name: Install vcpkg deps
         run: |
           $VCPKG_ROOT/vcpkg install \
             protobuf:x64-osx \
             nlohmann-json:x64-osx \
-            nlohmann-fifo-map:x64-osx \
             zstd:x64-osx
-        env:
-          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
-      - name: Configure CMake (macOS x64)
+      - name: Configure CMake
         run: |
           cmake -G Ninja -Wno-dev \
             -DX64=ON \
@@ -215,27 +212,23 @@ jobs:
             -DVCPKG_TARGET_TRIPLET=x64-osx \
             "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -S . -B build/macosx64
-        env:
-          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
       - name: Build
-        run: cmake --build build/macosx64 --config Release
+        run: cmake --build build/macosx64
 
-      - name: Install (outputs go to release/ in source root)
+      - name: Install
         run: cmake --install build/macosx64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-x64
-          path: |
-            release/
-            debug/
+          path: release/
           if-no-files-found: warn
 
-  # ─────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────
   # .NET Launcher
-  # ─────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────
   build-launcher:
     name: ".NET Launcher"
     runs-on: ubuntu-22.04
@@ -251,7 +244,7 @@ jobs:
 
       - name: Build (Linux)
         working-directory: NemirtingasEmuLauncher
-        run: dotnet publish -c Release --framework net8.0 || dotnet publish -c Release
+        run: dotnet publish -c Release || true
 
       - name: Build (Windows x64)
         working-directory: NemirtingasEmuLauncher
@@ -261,12 +254,12 @@ jobs:
         working-directory: NemirtingasEmuLauncher
         run: dotnet publish -c Release -r osx-x64 --self-contained=false || true
 
-      - name: Collect launcher binaries
+      - name: Collect binaries
         run: |
           mkdir -p release
-          find NemirtingasEmuLauncher/bin/Release -name "NemirtingasEmuLauncher.exe" -exec cp {} release/ \; || true
-          find NemirtingasEmuLauncher/bin/Release -path "*/osx-x64/*" -name "NemirtingasEmuLauncher" -exec cp {} release/NemirtingasEmuLauncher.macos \; || true
-          find NemirtingasEmuLauncher/bin/Release -name "NemirtingasEmuLauncher" ! -path "*/osx-x64/*" -exec cp {} release/NemirtingasEmuLauncher.linux \; || true
+          find NemirtingasEmuLauncher/bin -name "*.exe" -exec cp {} release/ \; || true
+          find NemirtingasEmuLauncher/bin -path "*/osx-x64/*" -name "NemirtingasEmuLauncher" -exec cp {} release/NemirtingasEmuLauncher.macos \; || true
+          find NemirtingasEmuLauncher/bin -name "NemirtingasEmuLauncher" ! -path "*/osx-x64/*" -exec cp {} release/NemirtingasEmuLauncher.linux \; || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
