@@ -7,17 +7,19 @@ on:
     branches: [ master, main ]
   workflow_dispatch:
 
+env:
+  VCPKG_BINARY_SOURCES: "clear"
+
 jobs:
 
-  # ────────────────────────────────────────
+  # ----------------------------------------
   # Windows x64
-  # ────────────────────────────────────────
+  # ----------------------------------------
   build-windows-x64:
     name: "Windows x64"
     runs-on: windows-2022
 
     steps:
-      # submodules: false — files already committed, avoids dead GitLab clone
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -27,9 +29,8 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
+          doNotCache: true
 
-      # abseil must be DYNAMIC (x64-windows) because CMakeLists links 'abseil_dll'
-      # zstd is NOT needed (USE_ZSTD_COMPRESS defaults to OFF)
       - name: Install vcpkg deps (x64)
         shell: bash
         run: |
@@ -67,9 +68,9 @@ jobs:
           path: release/win64/
           if-no-files-found: warn
 
-  # ────────────────────────────────────────
+  # ----------------------------------------
   # Windows x86
-  # ────────────────────────────────────────
+  # ----------------------------------------
   build-windows-x86:
     name: "Windows x86"
     runs-on: windows-2022
@@ -84,8 +85,8 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
+          doNotCache: true
 
-      # abseil must be DYNAMIC (x86-windows) because CMakeLists links 'abseil_dll'
       - name: Install vcpkg deps (x86)
         shell: bash
         run: |
