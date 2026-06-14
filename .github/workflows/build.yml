@@ -25,12 +25,12 @@ jobs:
         with:
           submodules: false
 
-      - name: Bootstrap vcpkg
+      # Pin to 2023.10.19 which has protobuf 3.21.x - compatible with this CMakeLists
+      - name: Bootstrap vcpkg (pinned 2023.10.19)
         shell: pwsh
         run: |
-          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          git clone --depth 1 --branch 2023.10.19 https://github.com/microsoft/vcpkg.git C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
 
       - name: Install vcpkg deps (x64)
         shell: pwsh
@@ -51,6 +51,7 @@ jobs:
           cmake -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DX64=ON `
+            -DProtobuf_USE_STATIC_LIBS=ON `
             -DVCPKG_TARGET_TRIPLET=x64-windows `
             -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake `
             -S . -B build/win64
@@ -83,12 +84,11 @@ jobs:
         with:
           submodules: false
 
-      - name: Bootstrap vcpkg
+      - name: Bootstrap vcpkg (pinned 2023.10.19)
         shell: pwsh
         run: |
-          git clone https://github.com/microsoft/vcpkg.git C:\vcpkg
+          git clone --depth 1 --branch 2023.10.19 https://github.com/microsoft/vcpkg.git C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
 
       - name: Install vcpkg deps (x86)
         shell: pwsh
@@ -109,6 +109,7 @@ jobs:
           cmake -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DX86=ON `
+            -DProtobuf_USE_STATIC_LIBS=ON `
             -DVCPKG_TARGET_TRIPLET=x86-windows `
             -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake `
             -S . -B build/win32
