@@ -9,6 +9,7 @@ on:
 
 env:
   VCPKG_BINARY_SOURCES: "clear"
+  VCPKG_FEATURE_FLAGS: "-binarycaching"
 
 jobs:
 
@@ -25,18 +26,20 @@ jobs:
         with:
           submodules: false
 
-      - name: Setup vcpkg
+      - name: Setup vcpkg (latest)
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
+          # Latest stable vcpkg commit as of 2025 - fixes dead MSYS2 pkgconf URLs
+          vcpkgGitCommitId: 'a34c873a9717a888f58dc05268dea15592c2f822'
           doNotCache: true
 
       - name: Install vcpkg deps (x64)
-        shell: bash
+        shell: pwsh
         run: |
-          "$VCPKG_ROOT/vcpkg" install \
-            protobuf:x64-windows \
-            abseil:x64-windows
+          & "$env:VCPKG_ROOT/vcpkg.exe" install `
+            protobuf:x64-windows `
+            abseil:x64-windows `
+            --no-binarycaching
 
       - name: Setup MSVC x64
         uses: ilammy/msvc-dev-cmd@v1
@@ -44,21 +47,21 @@ jobs:
           arch: amd64
 
       - name: Configure CMake (x64)
-        shell: bash
+        shell: pwsh
         run: |
-          cmake -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DX64=ON \
-            -DVCPKG_TARGET_TRIPLET=x64-windows \
-            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+          cmake -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DX64=ON `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -S . -B build/win64
 
       - name: Build (x64)
-        shell: bash
+        shell: pwsh
         run: cmake --build build/win64 --config Release
 
       - name: Install (x64)
-        shell: bash
+        shell: pwsh
         run: cmake --install build/win64 --config Release
 
       - name: Upload Windows x64
@@ -81,18 +84,19 @@ jobs:
         with:
           submodules: false
 
-      - name: Setup vcpkg
+      - name: Setup vcpkg (latest)
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
+          vcpkgGitCommitId: 'a34c873a9717a888f58dc05268dea15592c2f822'
           doNotCache: true
 
       - name: Install vcpkg deps (x86)
-        shell: bash
+        shell: pwsh
         run: |
-          "$VCPKG_ROOT/vcpkg" install \
-            protobuf:x86-windows \
-            abseil:x86-windows
+          & "$env:VCPKG_ROOT/vcpkg.exe" install `
+            protobuf:x86-windows `
+            abseil:x86-windows `
+            --no-binarycaching
 
       - name: Setup MSVC x86
         uses: ilammy/msvc-dev-cmd@v1
@@ -100,21 +104,21 @@ jobs:
           arch: amd64_x86
 
       - name: Configure CMake (x86)
-        shell: bash
+        shell: pwsh
         run: |
-          cmake -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DX86=ON \
-            -DVCPKG_TARGET_TRIPLET=x86-windows \
-            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+          cmake -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DX86=ON `
+            -DVCPKG_TARGET_TRIPLET=x86-windows `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -S . -B build/win32
 
       - name: Build (x86)
-        shell: bash
+        shell: pwsh
         run: cmake --build build/win32 --config Release
 
       - name: Install (x86)
-        shell: bash
+        shell: pwsh
         run: cmake --install build/win32 --config Release
 
       - name: Upload Windows x86
