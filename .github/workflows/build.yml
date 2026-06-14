@@ -9,15 +9,16 @@ on:
 
 jobs:
 
-  # ──────────────────────────────────────────────────────
+  # ────────────────────────────────────────
   # Windows x64
-  # ──────────────────────────────────────────────────────
+  # ────────────────────────────────────────
   build-windows-x64:
     name: "Windows x64"
     runs-on: windows-2022
 
     steps:
-      - name: Checkout (no submodule re-clone)
+      # submodules: false — files already committed, avoids dead GitLab clone
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: false
@@ -27,14 +28,14 @@ jobs:
         with:
           vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
 
+      # abseil must be DYNAMIC (x64-windows) because CMakeLists links 'abseil_dll'
+      # zstd is NOT needed (USE_ZSTD_COMPRESS defaults to OFF)
       - name: Install vcpkg deps (x64)
         shell: bash
         run: |
           "$VCPKG_ROOT/vcpkg" install \
-            protobuf:x64-windows-static \
-            nlohmann-json:x64-windows-static \
-            zstd:x64-windows-static \
-            abseil:x64-windows-static
+            protobuf:x64-windows \
+            abseil:x64-windows
 
       - name: Setup MSVC x64
         uses: ilammy/msvc-dev-cmd@v1
@@ -44,37 +45,37 @@ jobs:
       - name: Configure CMake (x64)
         shell: bash
         run: |
-          cmake -G Ninja -Wno-dev \
-            -DX64=ON \
+          cmake -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static \
+            -DX64=ON \
+            -DVCPKG_TARGET_TRIPLET=x64-windows \
             "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -S . -B build/win64
 
       - name: Build (x64)
         shell: bash
-        run: cmake --build build/win64
+        run: cmake --build build/win64 --config Release
 
       - name: Install (x64)
         shell: bash
-        run: cmake --install build/win64
+        run: cmake --install build/win64 --config Release
 
-      - name: Upload Windows x64 DLL
+      - name: Upload Windows x64
         uses: actions/upload-artifact@v4
         with:
           name: EOSSDK-Win64-Shipping
-          path: release/
+          path: release/win64/
           if-no-files-found: warn
 
-  # ──────────────────────────────────────────────────────
+  # ────────────────────────────────────────
   # Windows x86
-  # ──────────────────────────────────────────────────────
+  # ────────────────────────────────────────
   build-windows-x86:
     name: "Windows x86"
     runs-on: windows-2022
 
     steps:
-      - name: Checkout (no submodule re-clone)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: false
@@ -84,14 +85,13 @@ jobs:
         with:
           vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
 
+      # abseil must be DYNAMIC (x86-windows) because CMakeLists links 'abseil_dll'
       - name: Install vcpkg deps (x86)
         shell: bash
         run: |
           "$VCPKG_ROOT/vcpkg" install \
-            protobuf:x86-windows-static \
-            nlohmann-json:x86-windows-static \
-            zstd:x86-windows-static \
-            abseil:x86-windows-static
+            protobuf:x86-windows \
+            abseil:x86-windows
 
       - name: Setup MSVC x86
         uses: ilammy/msvc-dev-cmd@v1
@@ -101,24 +101,24 @@ jobs:
       - name: Configure CMake (x86)
         shell: bash
         run: |
-          cmake -G Ninja -Wno-dev \
-            -DX86=ON \
+          cmake -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DVCPKG_TARGET_TRIPLET=x86-windows-static \
+            -DX86=ON \
+            -DVCPKG_TARGET_TRIPLET=x86-windows \
             "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
             -S . -B build/win32
 
       - name: Build (x86)
         shell: bash
-        run: cmake --build build/win32
+        run: cmake --build build/win32 --config Release
 
       - name: Install (x86)
         shell: bash
-        run: cmake --install build/win32
+        run: cmake --install build/win32 --config Release
 
-      - name: Upload Windows x86 DLL
+      - name: Upload Windows x86
         uses: actions/upload-artifact@v4
         with:
           name: EOSSDK-Win32-Shipping
-          path: release/
+          path: release/win32/
           if-no-files-found: warn
