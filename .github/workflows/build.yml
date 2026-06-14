@@ -1,4 +1,4 @@
-name: Build EOS SDK Emulator
+name: Build EOS SDK Emulator (Windows)
 
 on:
   push:
@@ -9,71 +9,18 @@ on:
 
 jobs:
 
-  # ──────────────────────────────────────────
-  # LINUX x64
-  # ──────────────────────────────────────────
-  build-linux:
-    name: "Linux x64"
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: Checkout with submodules
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install build tools
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y \
-            cmake ninja-build \
-            gcc g++ \
-            curl zip unzip tar git \
-            pkg-config autoconf libtool
-
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
-
-      - name: Install vcpkg deps
-        run: |
-          $VCPKG_ROOT/vcpkg install protobuf:x64-linux nlohmann-json:x64-linux zstd:x64-linux
-
-      - name: Configure CMake
-        run: |
-          cmake -G Ninja -Wno-dev \
-            -DX64=ON \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -S . -B build/linux64
-
-      - name: Build
-        run: cmake --build build/linux64
-
-      - name: Install
-        run: cmake --install build/linux64
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-x64
-          path: release/
-          if-no-files-found: warn
-
-  # ──────────────────────────────────────────
-  # WINDOWS x64
-  # ──────────────────────────────────────────
+  # ──────────────────────────────────────────────────────
+  # Windows x64
+  # ──────────────────────────────────────────────────────
   build-windows-x64:
     name: "Windows x64"
     runs-on: windows-2022
 
     steps:
-      - name: Checkout with submodules
+      - name: Checkout (no submodule re-clone)
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
@@ -83,13 +30,13 @@ jobs:
       - name: Install vcpkg deps (x64)
         shell: bash
         run: |
-          $VCPKG_ROOT/vcpkg install \
+          "$VCPKG_ROOT/vcpkg" install \
             protobuf:x64-windows-static \
             nlohmann-json:x64-windows-static \
             zstd:x64-windows-static \
             abseil:x64-windows-static
 
-      - name: Setup MSVC (x64)
+      - name: Setup MSVC x64
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64
@@ -112,25 +59,25 @@ jobs:
         shell: bash
         run: cmake --install build/win64
 
-      - name: Upload artifact
+      - name: Upload Windows x64 DLL
         uses: actions/upload-artifact@v4
         with:
-          name: windows-x64
+          name: EOSSDK-Win64-Shipping
           path: release/
           if-no-files-found: warn
 
-  # ──────────────────────────────────────────
-  # WINDOWS x86
-  # ──────────────────────────────────────────
+  # ──────────────────────────────────────────────────────
+  # Windows x86
+  # ──────────────────────────────────────────────────────
   build-windows-x86:
     name: "Windows x86"
     runs-on: windows-2022
 
     steps:
-      - name: Checkout with submodules
+      - name: Checkout (no submodule re-clone)
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
 
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
@@ -140,13 +87,13 @@ jobs:
       - name: Install vcpkg deps (x86)
         shell: bash
         run: |
-          $VCPKG_ROOT/vcpkg install \
+          "$VCPKG_ROOT/vcpkg" install \
             protobuf:x86-windows-static \
             nlohmann-json:x86-windows-static \
             zstd:x86-windows-static \
             abseil:x86-windows-static
 
-      - name: Setup MSVC (x86)
+      - name: Setup MSVC x86
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: amd64_x86
@@ -169,101 +116,9 @@ jobs:
         shell: bash
         run: cmake --install build/win32
 
-      - name: Upload artifact
+      - name: Upload Windows x86 DLL
         uses: actions/upload-artifact@v4
         with:
-          name: windows-x86
-          path: release/
-          if-no-files-found: warn
-
-  # ──────────────────────────────────────────
-  # macOS x64
-  # ──────────────────────────────────────────
-  build-macos:
-    name: "macOS x64"
-    runs-on: macos-13
-
-    steps:
-      - name: Checkout with submodules
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install build tools
-        run: brew install ninja cmake
-
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
-
-      - name: Install vcpkg deps
-        run: |
-          $VCPKG_ROOT/vcpkg install \
-            protobuf:x64-osx \
-            nlohmann-json:x64-osx \
-            zstd:x64-osx
-
-      - name: Configure CMake
-        run: |
-          cmake -G Ninja -Wno-dev \
-            -DX64=ON \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DVCPKG_TARGET_TRIPLET=x64-osx \
-            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -S . -B build/macosx64
-
-      - name: Build
-        run: cmake --build build/macosx64
-
-      - name: Install
-        run: cmake --install build/macosx64
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-x64
-          path: release/
-          if-no-files-found: warn
-
-  # ──────────────────────────────────────────
-  # .NET Launcher
-  # ──────────────────────────────────────────
-  build-launcher:
-    name: ".NET Launcher"
-    runs-on: ubuntu-22.04
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Build (Linux)
-        working-directory: NemirtingasEmuLauncher
-        run: dotnet publish -c Release || true
-
-      - name: Build (Windows x64)
-        working-directory: NemirtingasEmuLauncher
-        run: dotnet publish -c Release -r win-x64 --self-contained=false || true
-
-      - name: Build (macOS x64)
-        working-directory: NemirtingasEmuLauncher
-        run: dotnet publish -c Release -r osx-x64 --self-contained=false || true
-
-      - name: Collect binaries
-        run: |
-          mkdir -p release
-          find NemirtingasEmuLauncher/bin -name "*.exe" -exec cp {} release/ \; || true
-          find NemirtingasEmuLauncher/bin -path "*/osx-x64/*" -name "NemirtingasEmuLauncher" -exec cp {} release/NemirtingasEmuLauncher.macos \; || true
-          find NemirtingasEmuLauncher/bin -name "NemirtingasEmuLauncher" ! -path "*/osx-x64/*" -exec cp {} release/NemirtingasEmuLauncher.linux \; || true
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: launcher
+          name: EOSSDK-Win32-Shipping
           path: release/
           if-no-files-found: warn
