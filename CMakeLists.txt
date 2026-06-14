@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.15)
 project(nemirtingas_epic_emu)
 
 # Workaround because cross-compiling with CMake + vcpkg fucks up this variable
-# making the 'find_*' functions/macros somehow fail to find the right arch.
 if(X86 AND NOT X64)
   set(CMAKE_SIZEOF_VOID_P "4")
 elseif(X64 AND NOT X86)
@@ -99,8 +98,7 @@ option(DISABLE_LOG "Disable all logging. Will reduce emu size and will speed it 
 option(USE_ZSTD_COMPRESS "Use zstd to compress network messages" OFF)
 
 set(Protobuf_USE_STATIC_LIBS ON)
-# Only use CONFIG mode — do NOT include(FindProtobuf) first as it pre-defines
-# targets and conflicts with protobuf 4+/6+ which adds protobuf::libupb
+# Only CONFIG mode - do NOT include(FindProtobuf) as it conflicts with protobuf 4+
 find_package(Protobuf CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 
@@ -113,7 +111,6 @@ endif()
 protobuf_generate_cpp(net_PROTO_SRCS net_PROTO_HDRS proto/network_proto.proto)
 
 ########################################
-## eos dll sources
 file(GLOB emu_sources eos_dll/*.cpp managers/*.cpp)
 
 if(WIN32)
@@ -145,17 +142,14 @@ endif()
 
 target_link_libraries(
   ${EPIC_API}
+  # protobuf::libprotobuf-lite already carries abseil as a transitive dependency
   protobuf::libprotobuf-lite
   Threads::Threads
   $<$<BOOL:${USE_ZSTD_COMPRESS}>:libzstd>
-
   $<$<BOOL:${WIN32}>:ws2_32>
   $<$<BOOL:${WIN32}>:iphlpapi>
   $<$<BOOL:${WIN32}>:shell32>
   $<$<BOOL:${WIN32}>:user32>
-  # abseil imported target from vcpkg (works with both old and new abseil)
-  $<$<BOOL:${WIN32}>:abseil::abseil_dll>
-
   $<$<BOOL:${UNIX}>:dl>
 )
 

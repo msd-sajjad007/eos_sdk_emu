@@ -31,12 +31,12 @@ jobs:
           git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
 
+      # abseil is auto-installed as a protobuf transitive dep - no need to list it
       - name: Install vcpkg deps (x64)
         shell: pwsh
         run: |
           C:\vcpkg\vcpkg.exe install `
             protobuf:x64-windows `
-            abseil:x64-windows `
             --no-binarycaching
 
       - name: Setup MSVC x64
@@ -93,7 +93,6 @@ jobs:
         run: |
           C:\vcpkg\vcpkg.exe install `
             protobuf:x86-windows `
-            abseil:x86-windows `
             --no-binarycaching
 
       - name: Setup MSVC x86
