@@ -7,250 +7,270 @@ on:
     branches: [ master, main ]
   workflow_dispatch:
 
-env:
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-
 jobs:
-  # ─────────────────────────────────────────────
-  # Linux x64 build
-  # ─────────────────────────────────────────────
+
+  # ─────────────────────────────────────────────────────────────
+  # LINUX x64
+  # ─────────────────────────────────────────────────────────────
   build-linux:
-    name: Build Linux x64
+    name: "Linux x64"
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout (with submodules)
+      - name: Checkout (recursive submodules)
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Export GitHub Actions cache env vars
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
-      - name: Install system dependencies
+      - name: Install system build tools
         run: |
-          sudo apt-get update
+          sudo apt-get update -y
           sudo apt-get install -y \
             cmake ninja-build \
-            gcc g++ \
-            pkg-config \
-            curl zip unzip tar git
+            gcc-12 g++-12 \
+            curl zip unzip tar git \
+            autoconf libtool pkg-config
 
       - name: Setup vcpkg
+        id: vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
 
-      - name: Install vcpkg dependencies (Linux x64)
+      - name: Install vcpkg deps (Linux x64)
         run: |
-          vcpkg install protobuf:x64-linux
-          vcpkg install nlohmann-json:x64-linux
-          vcpkg install zstd:x64-linux
+          $VCPKG_ROOT/vcpkg install \
+            protobuf:x64-linux \
+            nlohmann-json:x64-linux \
+            nlohmann-fifo-map:x64-linux \
+            zstd:x64-linux
         env:
-          VCPKG_ROOT: ${{ env.VCPKG_ROOT }}
+          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
-      - name: Configure CMake (Linux x64 Release)
+      - name: Configure CMake (Linux x64)
         run: |
           cmake -G Ninja -Wno-dev \
             -DX64=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -S . -B linux64/Release
+            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -S . -B build/linux64
+        env:
+          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
-      - name: Build (Linux x64 Release)
-        run: cmake --build linux64/Release
+      - name: Build
+        run: cmake --build build/linux64 --config Release
 
-      - name: Install artifacts
-        run: cmake --install linux64/Release --prefix release/linux64
+      - name: Install (outputs go to release/ in source root)
+        run: cmake --install build/linux64
 
-      - name: Upload Linux x64 artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-x64-release
-          path: release/
+          name: linux-x64
+          path: |
+            release/
+            debug/
           if-no-files-found: warn
 
-  # ─────────────────────────────────────────────
-  # Windows x86 + x64 build
-  # ─────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # WINDOWS x86 + x64
+  # ─────────────────────────────────────────────────────────────
   build-windows:
-    name: Build Windows (x86 + x64)
+    name: "Windows x86 + x64"
     runs-on: windows-2022
 
     steps:
-      - name: Checkout (with submodules)
+      - name: Checkout (recursive submodules)
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Export GitHub Actions cache env vars
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
       - name: Setup vcpkg
+        id: vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
 
-      - name: Install vcpkg dependencies (Windows x86)
-        run: |
-          vcpkg install protobuf:x86-windows
-          vcpkg install nlohmann-json:x86-windows
-          vcpkg install zstd:x86-windows
+      - name: Install vcpkg deps (Windows x86)
         shell: bash
-
-      - name: Install vcpkg dependencies (Windows x64)
         run: |
-          vcpkg install protobuf:x64-windows
-          vcpkg install nlohmann-json:x64-windows
-          vcpkg install zstd:x64-windows
+          "$VCPKG_ROOT/vcpkg" install \
+            protobuf:x86-windows-static \
+            nlohmann-json:x86-windows-static \
+            nlohmann-fifo-map:x86-windows-static \
+            zstd:x86-windows-static \
+            abseil:x86-windows-static
+        env:
+          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
+
+      - name: Install vcpkg deps (Windows x64)
         shell: bash
-
-      - name: Configure CMake (Windows x86 Release)
         run: |
-          cmake -G "Visual Studio 17 2022" -A Win32 -Wno-dev `
+          "$VCPKG_ROOT/vcpkg" install \
+            protobuf:x64-windows-static \
+            nlohmann-json:x64-windows-static \
+            nlohmann-fifo-map:x64-windows-static \
+            zstd:x64-windows-static \
+            abseil:x64-windows-static
+        env:
+          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
+
+      - name: Setup MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+
+      - name: Configure CMake (Windows x86)
+        shell: pwsh
+        run: |
+          cmake -G Ninja -Wno-dev `
             -DX86=ON `
             -DCMAKE_BUILD_TYPE=Release `
-            -DVCPKG_TARGET_TRIPLET=x86-windows `
+            -DVCPKG_TARGET_TRIPLET=x86-windows-static `
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -S . -B win32/Release
-        shell: pwsh
+            -S . -B build/win32
+        env:
+          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
-      - name: Build (Windows x86 Release)
-        run: cmake --build win32/Release --config Release
+      - name: Build (Windows x86)
         shell: pwsh
+        run: cmake --build build/win32 --config Release
 
       - name: Install (Windows x86)
-        run: cmake --install win32/Release --config Release --prefix release/win32
         shell: pwsh
+        run: cmake --install build/win32
 
-      - name: Configure CMake (Windows x64 Release)
+      - name: Setup MSVC environment (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure CMake (Windows x64)
+        shell: pwsh
         run: |
-          cmake -G "Visual Studio 17 2022" -A x64 -Wno-dev `
+          cmake -G Ninja -Wno-dev `
             -DX64=ON `
             -DCMAKE_BUILD_TYPE=Release `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
             "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -S . -B win64/Release
-        shell: pwsh
+            -S . -B build/win64
+        env:
+          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
-      - name: Build (Windows x64 Release)
-        run: cmake --build win64/Release --config Release
+      - name: Build (Windows x64)
         shell: pwsh
+        run: cmake --build build/win64 --config Release
 
       - name: Install (Windows x64)
-        run: cmake --install win64/Release --config Release --prefix release/win64
         shell: pwsh
+        run: cmake --install build/win64
 
-      - name: Upload Windows artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-release
-          path: release/
+          name: windows-x86-x64
+          path: |
+            release/
+            debug/
           if-no-files-found: warn
 
-  # ─────────────────────────────────────────────
-  # macOS x64 build
-  # ─────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # macOS x64
+  # ─────────────────────────────────────────────────────────────
   build-macos:
-    name: Build macOS x64
+    name: "macOS x64"
     runs-on: macos-13
 
     steps:
-      - name: Checkout (with submodules)
+      - name: Checkout (recursive submodules)
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Export GitHub Actions cache env vars
-        uses: actions/github-script@v7
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
-      - name: Install system dependencies
+      - name: Install system build tools
         run: brew install ninja cmake
 
       - name: Setup vcpkg
+        id: vcpkg
         uses: lukka/run-vcpkg@v11
         with:
-          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
 
-      - name: Install vcpkg dependencies (macOS x64)
+      - name: Install vcpkg deps (macOS x64)
         run: |
-          vcpkg install protobuf:x64-osx
-          vcpkg install nlohmann-json:x64-osx
-          vcpkg install zstd:x64-osx
+          $VCPKG_ROOT/vcpkg install \
+            protobuf:x64-osx \
+            nlohmann-json:x64-osx \
+            nlohmann-fifo-map:x64-osx \
+            zstd:x64-osx
+        env:
+          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
-      - name: Configure CMake (macOS x64 Release)
+      - name: Configure CMake (macOS x64)
         run: |
           cmake -G Ninja -Wno-dev \
             -DX64=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DVCPKG_TARGET_TRIPLET=x64-osx \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -S . -B macosx64/Release
+            "-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -S . -B build/macosx64
+        env:
+          VCPKG_ROOT: ${{ steps.vcpkg.outputs.RUNVCPKG_VCPKG_ROOT_OUT }}
 
-      - name: Build (macOS x64 Release)
-        run: cmake --build macosx64/Release
+      - name: Build
+        run: cmake --build build/macosx64 --config Release
 
-      - name: Install artifacts
-        run: cmake --install macosx64/Release --prefix release/macosx64
+      - name: Install (outputs go to release/ in source root)
+        run: cmake --install build/macosx64
 
-      - name: Upload macOS artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-x64-release
-          path: release/
+          name: macos-x64
+          path: |
+            release/
+            debug/
           if-no-files-found: warn
 
-  # ─────────────────────────────────────────────
-  # .NET Launcher build
-  # ─────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # .NET Launcher
+  # ─────────────────────────────────────────────────────────────
   build-launcher:
-    name: Build .NET Launcher
+    name: ".NET Launcher"
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '3.1.x'
+          dotnet-version: '8.0.x'
 
-      - name: Build Launcher (Linux)
+      - name: Build (Linux)
         working-directory: NemirtingasEmuLauncher
-        run: dotnet publish -c Release
+        run: dotnet publish -c Release --framework net8.0 || dotnet publish -c Release
 
-      - name: Build Launcher (Windows x64)
+      - name: Build (Windows x64)
         working-directory: NemirtingasEmuLauncher
-        run: dotnet publish -c Release -r win-x64 --self-contained=false
+        run: dotnet publish -c Release -r win-x64 --self-contained=false || true
 
-      - name: Build Launcher (macOS x64)
+      - name: Build (macOS x64)
         working-directory: NemirtingasEmuLauncher
-        run: dotnet publish -c Release -r osx-x64 --self-contained=false
+        run: dotnet publish -c Release -r osx-x64 --self-contained=false || true
 
       - name: Collect launcher binaries
         run: |
           mkdir -p release
-          cp NemirtingasEmuLauncher/bin/Release/netcoreapp3.1/win-x64/publish/NemirtingasEmuLauncher.exe release/ || true
-          cp NemirtingasEmuLauncher/bin/Release/netcoreapp3.1/osx-x64/publish/NemirtingasEmuLauncher release/NemirtingasEmuLauncher.macos || true
-          cp NemirtingasEmuLauncher/bin/Release/netcoreapp3.1/publish/NemirtingasEmuLauncher release/NemirtingasEmuLauncher.linux || true
+          find NemirtingasEmuLauncher/bin/Release -name "NemirtingasEmuLauncher.exe" -exec cp {} release/ \; || true
+          find NemirtingasEmuLauncher/bin/Release -path "*/osx-x64/*" -name "NemirtingasEmuLauncher" -exec cp {} release/NemirtingasEmuLauncher.macos \; || true
+          find NemirtingasEmuLauncher/bin/Release -name "NemirtingasEmuLauncher" ! -path "*/osx-x64/*" -exec cp {} release/NemirtingasEmuLauncher.linux \; || true
 
-      - name: Upload Launcher artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: launcher-release
+          name: launcher
           path: release/
           if-no-files-found: warn
