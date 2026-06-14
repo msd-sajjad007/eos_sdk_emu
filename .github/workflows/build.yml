@@ -1,0 +1,256 @@
+name: Build EOS SDK Emulator
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Linux x64 build
+  # ─────────────────────────────────────────────
+  build-linux:
+    name: Build Linux x64
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Export GitHub Actions cache env vars
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build \
+            gcc g++ \
+            pkg-config \
+            curl zip unzip tar git
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+
+      - name: Install vcpkg dependencies (Linux x64)
+        run: |
+          vcpkg install protobuf:x64-linux
+          vcpkg install nlohmann-json:x64-linux
+          vcpkg install zstd:x64-linux
+        env:
+          VCPKG_ROOT: ${{ env.VCPKG_ROOT }}
+
+      - name: Configure CMake (Linux x64 Release)
+        run: |
+          cmake -G Ninja -Wno-dev \
+            -DX64=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -S . -B linux64/Release
+
+      - name: Build (Linux x64 Release)
+        run: cmake --build linux64/Release
+
+      - name: Install artifacts
+        run: cmake --install linux64/Release --prefix release/linux64
+
+      - name: Upload Linux x64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64-release
+          path: release/
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────
+  # Windows x86 + x64 build
+  # ─────────────────────────────────────────────
+  build-windows:
+    name: Build Windows (x86 + x64)
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Export GitHub Actions cache env vars
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+
+      - name: Install vcpkg dependencies (Windows x86)
+        run: |
+          vcpkg install protobuf:x86-windows
+          vcpkg install nlohmann-json:x86-windows
+          vcpkg install zstd:x86-windows
+        shell: bash
+
+      - name: Install vcpkg dependencies (Windows x64)
+        run: |
+          vcpkg install protobuf:x64-windows
+          vcpkg install nlohmann-json:x64-windows
+          vcpkg install zstd:x64-windows
+        shell: bash
+
+      - name: Configure CMake (Windows x86 Release)
+        run: |
+          cmake -G "Visual Studio 17 2022" -A Win32 -Wno-dev `
+            -DX86=ON `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DVCPKG_TARGET_TRIPLET=x86-windows `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -S . -B win32/Release
+        shell: pwsh
+
+      - name: Build (Windows x86 Release)
+        run: cmake --build win32/Release --config Release
+        shell: pwsh
+
+      - name: Install (Windows x86)
+        run: cmake --install win32/Release --config Release --prefix release/win32
+        shell: pwsh
+
+      - name: Configure CMake (Windows x64 Release)
+        run: |
+          cmake -G "Visual Studio 17 2022" -A x64 -Wno-dev `
+            -DX64=ON `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            "-DCMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -S . -B win64/Release
+        shell: pwsh
+
+      - name: Build (Windows x64 Release)
+        run: cmake --build win64/Release --config Release
+        shell: pwsh
+
+      - name: Install (Windows x64)
+        run: cmake --install win64/Release --config Release --prefix release/win64
+        shell: pwsh
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: release/
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────
+  # macOS x64 build
+  # ─────────────────────────────────────────────
+  build-macos:
+    name: Build macOS x64
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Export GitHub Actions cache env vars
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Install system dependencies
+        run: brew install ninja cmake
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'a42af01b72c28a8e1d7b48107b33e4f286a55ef6'
+
+      - name: Install vcpkg dependencies (macOS x64)
+        run: |
+          vcpkg install protobuf:x64-osx
+          vcpkg install nlohmann-json:x64-osx
+          vcpkg install zstd:x64-osx
+
+      - name: Configure CMake (macOS x64 Release)
+        run: |
+          cmake -G Ninja -Wno-dev \
+            -DX64=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVCPKG_TARGET_TRIPLET=x64-osx \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -S . -B macosx64/Release
+
+      - name: Build (macOS x64 Release)
+        run: cmake --build macosx64/Release
+
+      - name: Install artifacts
+        run: cmake --install macosx64/Release --prefix release/macosx64
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x64-release
+          path: release/
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────
+  # .NET Launcher build
+  # ─────────────────────────────────────────────
+  build-launcher:
+    name: Build .NET Launcher
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '3.1.x'
+
+      - name: Build Launcher (Linux)
+        working-directory: NemirtingasEmuLauncher
+        run: dotnet publish -c Release
+
+      - name: Build Launcher (Windows x64)
+        working-directory: NemirtingasEmuLauncher
+        run: dotnet publish -c Release -r win-x64 --self-contained=false
+
+      - name: Build Launcher (macOS x64)
+        working-directory: NemirtingasEmuLauncher
+        run: dotnet publish -c Release -r osx-x64 --self-contained=false
+
+      - name: Collect launcher binaries
+        run: |
+          mkdir -p release
+          cp NemirtingasEmuLauncher/bin/Release/netcoreapp3.1/win-x64/publish/NemirtingasEmuLauncher.exe release/ || true
+          cp NemirtingasEmuLauncher/bin/Release/netcoreapp3.1/osx-x64/publish/NemirtingasEmuLauncher release/NemirtingasEmuLauncher.macos || true
+          cp NemirtingasEmuLauncher/bin/Release/netcoreapp3.1/publish/NemirtingasEmuLauncher release/NemirtingasEmuLauncher.linux || true
+
+      - name: Upload Launcher artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: launcher-release
+          path: release/
+          if-no-files-found: warn
