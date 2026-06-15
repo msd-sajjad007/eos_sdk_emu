@@ -43,6 +43,24 @@ jobs:
             .\bootstrap-vcpkg.bat -disableMetrics
             Pop-Location
           }
+
+      - name: Pre-download nlohmann-json tarball into vcpkg cache
+        shell: pwsh
+        run: |
+          $dest = "$env:LOCALAPPDATA\vcpkg\downloads"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $file = "$dest\nlohmann-json-3.11.3.tar.gz"
+          if (-not (Test-Path $file)) {
+            Write-Host "Downloading nlohmann/json v3.11.3..."
+            Invoke-WebRequest `
+              -Uri "https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz" `
+              -OutFile $file `
+              -UseBasicParsing
+            Write-Host "Downloaded to $file"
+          } else {
+            Write-Host "Already cached: $file"
+          }
+
       - name: Cache vcpkg packages
         uses: actions/cache@v4
         id: vcpkg-cache
@@ -55,12 +73,12 @@ jobs:
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          # --overlay-ports points to our patched abseil and nlohmann-json that skip vcpkg_fixup_pkgconfig
           .\vcpkg\vcpkg.exe install `
             --triplet $env:VCPKG_TRIPLET `
             --overlay-ports="${{ github.workspace }}\overlay" `
             --x-install-root="${{ github.workspace }}\vcpkg_installed" `
             --no-print-usage
+
       - name: Install Ninja
         shell: cmd
         run: choco install ninja -y --no-progress
