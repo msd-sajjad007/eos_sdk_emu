@@ -1,80 +1,235 @@
-name: Build EOS SDK Emulator (Windows)
+name: Build All Platforms
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master ]
   pull_request:
-    branches: [ master, main ]
+    branches: [ master ]
   workflow_dispatch:
 
-env:
-  VCPKG_BINARY_SOURCES: "clear"
-
 jobs:
-
-  build-windows-x64:
-    name: "Windows x64 (single DLL)"
+  # ─────────────────────────────────────────
+  # Windows x64
+  # ─────────────────────────────────────────
+  build-win64:
+    name: Windows x64 (MSVC)
     runs-on: windows-2022
-
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows-static
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: recursive
 
-      - name: Bootstrap vcpkg
-        shell: pwsh
-        run: |
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
-          C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-
-      - name: Install vcpkg deps (x64) -- STATIC so no extra DLLs needed
-        shell: pwsh
-        run: |
-          C:\vcpkg\vcpkg.exe install `
-            protobuf:x64-windows-static `
-            nlohmann-json:x64-windows-static `
-            nlohmann-fifo-map:x64-windows-static `
-            --no-binarycaching
-
-      - name: Setup MSVC x64
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
         with:
-          arch: amd64
+          vcpkgGitCommitId: 'b322364f06308bdd24823a9d85f01644e0fc4a1b'
 
-      - name: Configure CMake (x64, static runtime + static vcpkg)
+      - name: Install vcpkg dependencies
+        run: |
+          $env:VCPKG_DEFAULT_TRIPLET = "x64-windows-static"
+          vcpkg install protobuf abseil utf8-range nlohmann-json --triplet x64-windows-static
         shell: pwsh
+
+      - name: Configure CMake
         run: |
           cmake -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DX64=ON `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows-static `
-            -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake `
-            -DVCPKG_CRT_LINKAGE=static `
-            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
-            -S . -B build/win64
-
-      - name: Build (x64)
+            -B build-win64
         shell: pwsh
-        run: cmake --build build/win64 --config Release
+        env:
+          VCPKG_ROOT: ${{ env.VCPKG_ROOT }}
 
-      - name: Install (x64)
+      - name: Build
+        run: cmake --build build-win64 --config Release
         shell: pwsh
-        run: cmake --install build/win64 --config Release
 
-      - name: Copy config JSON into artifact folder
+      - name: Install
+        run: cmake --install build-win64 --config Release
         shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force release/win64 | Out-Null
-          Copy-Item NemirtingasEpicEmu.json release/win64/ -Force
 
-      - name: List artifact contents (verify single DLL)
-        shell: pwsh
-        run: Get-ChildItem release/win64/
-
-      - name: Upload Windows x64 artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: EOSSDK-Win64-Shipping
+          name: win64
           path: release/win64/
-          if-no-files-found: warn
+
+  # ─────────────────────────────────────────
+  # Windows x86
+  # ─────────────────────────────────────────
+  build-win32:
+    name: Windows x86 (MSVC)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'b322364f06308bdd24823a9d85f01644e0fc4a1b'
+
+      - name: Install vcpkg dependencies
+        run: |
+          vcpkg install protobuf abseil utf8-range nlohmann-json --triplet x86-windows-static
+        shell: pwsh
+
+      - name: Configure CMake
+        run: |
+          cmake -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DX86=ON `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x86-windows-static `
+            -B build-win32
+        shell: pwsh
+        env:
+          VCPKG_ROOT: ${{ env.VCPKG_ROOT }}
+
+      - name: Build
+        run: cmake --build build-win32 --config Release
+        shell: pwsh
+
+      - name: Install
+        run: cmake --install build-win32 --config Release
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: win32
+          path: release/win32/
+
+  # ─────────────────────────────────────────
+  # Linux x64
+  # ─────────────────────────────────────────
+  build-linux64:
+    name: Linux x64 (GCC)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'b322364f06308bdd24823a9d85f01644e0fc4a1b'
+
+      - name: Install vcpkg dependencies
+        run: vcpkg install protobuf abseil utf8-range nlohmann-json --triplet x64-linux
+
+      - name: Configure CMake
+        run: |
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DX64=ON \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -B build-linux64
+
+      - name: Build
+        run: cmake --build build-linux64 --config Release
+
+      - name: Install
+        run: cmake --install build-linux64 --config Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux64
+          path: release/linux64/
+
+  # ─────────────────────────────────────────
+  # macOS x64
+  # ─────────────────────────────────────────
+  build-macos64:
+    name: macOS x64 (Clang)
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system deps
+        run: brew install ninja cmake
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'b322364f06308bdd24823a9d85f01644e0fc4a1b'
+
+      - name: Install vcpkg dependencies
+        run: vcpkg install protobuf abseil utf8-range nlohmann-json --triplet x64-osx
+
+      - name: Configure CMake
+        run: |
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DX64=ON \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-osx \
+            -B build-macos64
+
+      - name: Build
+        run: cmake --build build-macos64 --config Release
+
+      - name: Install
+        run: cmake --install build-macos64 --config Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos64
+          path: release/macosx64/
+
+  # ─────────────────────────────────────────
+  # Combine all artifacts into one release zip
+  # ─────────────────────────────────────────
+  package:
+    name: Package All Builds
+    runs-on: ubuntu-22.04
+    needs: [build-win64, build-win32, build-linux64, build-macos64]
+    steps:
+      - name: Download win64
+        uses: actions/download-artifact@v4
+        with:
+          name: win64
+          path: release/win64
+
+      - name: Download win32
+        uses: actions/download-artifact@v4
+        with:
+          name: win32
+          path: release/win32
+
+      - name: Download linux64
+        uses: actions/download-artifact@v4
+        with:
+          name: linux64
+          path: release/linux64
+
+      - name: Download macos64
+        uses: actions/download-artifact@v4
+        with:
+          name: macos64
+          path: release/macos64
+
+      - name: Create combined archive
+        run: |
+          cd release
+          zip -r ../eos_sdk_emu_all_platforms.zip .
+
+      - name: Upload combined artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eos_sdk_emu_all_platforms
+          path: eos_sdk_emu_all_platforms.zip
