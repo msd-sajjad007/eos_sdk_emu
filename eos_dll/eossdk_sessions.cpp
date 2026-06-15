@@ -1810,7 +1810,9 @@ bool EOSSDK_Sessions::RunCallbacks(pFrameResult_t res)
                     {
                         return item.second.infos.session_id() == join_it->first;
                     });
-                    if (session_it == _sessions.end())
+                    // FIX 3: was `== _sessions.end()` (erase of invalid end iterator = UB/crash).
+                    // Corrected to `!= _sessions.end()` so we only erase when the session is found.
+                    if (session_it != _sessions.end())
                         _sessions.erase(session_it);
 
                     _sessions_join.erase(join_it);
