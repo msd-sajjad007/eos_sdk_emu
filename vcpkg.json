@@ -1,0 +1,10 @@
+{
+  "name": "eos-sdk-emu",
+  "version": "1.0.0",
+  "dependencies": [
+    "protobuf",
+    "abseil",
+    "utf8-range",
+    "nlohmann-json"
+  ]
+}

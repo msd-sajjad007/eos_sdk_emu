@@ -13,8 +13,9 @@ jobs:
     runs-on: windows-2022
 
     env:
-      VCPKG_DIR: ${{ github.workspace }}\vcpkg
-      VCPKG_TRIPLET: x64-windows-static
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_TRIPLET: x64-windows-static
+      VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static
       VCPKG_DISABLE_METRICS: 1
 
     steps:
@@ -23,20 +24,15 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: c82f74667287d3dc386bce81e44964370c91a289
+          runVcpkgInstall: true
+
       - name: Install Ninja
         run: choco install ninja -y --no-progress
         shell: cmd
-
-      - name: Clone fresh vcpkg
-        shell: cmd
-        run: |
-          git clone https://github.com/microsoft/vcpkg.git "%VCPKG_DIR%" --depth=1
-          "%VCPKG_DIR%\bootstrap-vcpkg.bat" -disableMetrics
-
-      - name: Install dependencies via fresh vcpkg
-        shell: cmd
-        run: |
-          "%VCPKG_DIR%\vcpkg.exe" install protobuf abseil utf8-range nlohmann-json --triplet %VCPKG_TRIPLET% --no-print-usage
 
       - name: Configure CMake (x64)
         shell: cmd
@@ -45,8 +41,9 @@ jobs:
           cmake -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DX64=ON ^
-            -DCMAKE_TOOLCHAIN_FILE="%VCPKG_DIR%/scripts/buildsystems/vcpkg.cmake" ^
-            -DVCPKG_TARGET_TRIPLET=%VCPKG_TRIPLET% ^
+            -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake" ^
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static ^
+            -DVCPKG_HOST_TRIPLET=x64-windows-static ^
             -B build-win64
 
       - name: Build

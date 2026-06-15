@@ -1,123 +1,99 @@
 cmake_minimum_required(VERSION 3.15)
-project(nemirtingas_epic_emu)
 
-# Workaround: cross-compiling with CMake + vcpkg can corrupt CMAKE_SIZEOF_VOID_P
+# Must be set BEFORE project() so MSVC runtime flags work correctly
+cmake_policy(SET CMP0003 NEW)
+cmake_policy(SET CMP0048 NEW)
+cmake_policy(SET CMP0091 NEW)
+
+project(nemirtingas_epic_emu VERSION 1.0.0 LANGUAGES C CXX)
+
+# ---- Arch guard -------------------------------------------------------
 if(X86 AND NOT X64)
-  set(CMAKE_SIZEOF_VOID_P "4")
+  set(CMAKE_SIZEOF_VOID_P 4)
 elseif(X64 AND NOT X86)
-  set(CMAKE_SIZEOF_VOID_P "8")
+  set(CMAKE_SIZEOF_VOID_P 8)
 else()
-  message(FATAL_ERROR "Please define either -DX86=ON or -DX64=ON")
+  message(FATAL_ERROR "Define exactly one of -DX86=ON or -DX64=ON")
 endif()
 
+# ---- Platform setup ---------------------------------------------------
 if(WIN32)
   if(MSVC)
     add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-    set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
-    set(CompilerFlags
-        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-        CMAKE_C_FLAGS   CMAKE_C_FLAGS_DEBUG   CMAKE_C_FLAGS_RELEASE
-    )
-    foreach(CompilerFlag ${CompilerFlags})
-      string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
-    endforeach()
+    # Force static CRT (/MT) — must match x64-windows-static triplet
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
   endif()
-
   if(X64)
     set(EPIC_API EOSSDK-Win64-Shipping)
-    set(OUT_DIR win64)
-  elseif(X86)
-    set(EPIC_API EOSSDK-Win32-Shipping)
-    set(OUT_DIR win32)
+    set(OUT_DIR  win64)
   else()
-    message(FATAL_ERROR "Arch unknown")
+    set(EPIC_API EOSSDK-Win32-Shipping)
+    set(OUT_DIR  win32)
   endif()
 
 elseif(APPLE)
   message(STATUS "CMake for APPLE is experimental")
-  if(X64)
-    set(CMAKE_C_FLAGS             "${CMAKE_C_FLAGS} -m64")
-    set(CMAKE_CXX_FLAGS           "${CMAKE_CXX_FLAGS} -m64")
-    set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -m64")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m64")
-    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m64")
-    set(OUT_DIR macosx64)
-  elseif(X86)
-    set(CMAKE_C_FLAGS             "${CMAKE_C_FLAGS} -m32")
-    set(CMAKE_CXX_FLAGS           "${CMAKE_CXX_FLAGS} -m32")
-    set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -m32")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m32")
-    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m32")
-    set(OUT_DIR macosx32)
-  else()
-    message(FATAL_ERROR "Arch unknown")
-  endif()
+  set(arch_flag $<IF:$<BOOL:${X64}>,-m64,-m32>)
+  foreach(v CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_STATIC_LINKER_FLAGS)
+    string(APPEND ${v} " ${arch_flag}")
+  endforeach()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -stdlib=libc++")
   set(EPIC_API libEOSSDK-Mac-Shipping)
+  set(OUT_DIR  $<IF:$<BOOL:${X64}>,macosx64,macosx32>)
 
 elseif(UNIX)
-  if(X64)
-    set(CMAKE_C_FLAGS             "${CMAKE_C_FLAGS} -m64")
-    set(CMAKE_CXX_FLAGS           "${CMAKE_CXX_FLAGS} -m64")
-    set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -m64")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m64")
-    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m64")
-    set(OUT_DIR linux64)
-  elseif(X86)
-    set(CMAKE_C_FLAGS             "${CMAKE_C_FLAGS} -m32")
-    set(CMAKE_CXX_FLAGS           "${CMAKE_CXX_FLAGS} -m32")
-    set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -m32")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m32")
-    set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m32")
-    set(OUT_DIR linux32)
-  else()
-    message(FATAL_ERROR "Arch unknown")
-  endif()
+  set(arch_flag $<IF:$<BOOL:${X64}>,-m64,-m32>)
+  foreach(v CMAKE_C_FLAGS CMAKE_CXX_FLAGS CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_STATIC_LINKER_FLAGS)
+    string(APPEND ${v} " ${arch_flag}")
+  endforeach()
   set(EPIC_API libEOSSDK-Linux-Shipping)
+  set(OUT_DIR  $<IF:$<BOOL:${X64}>,linux64,linux32>)
 
 else()
-  message(FATAL_ERROR "No CMake for other platforms")
+  message(FATAL_ERROR "Unsupported platform")
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+# ---- C++ standard -----------------------------------------------------
+set(CMAKE_CXX_STANDARD          17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_EXTENSIONS        OFF)
 
+# ---- Output dirs ------------------------------------------------------
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Debug or Release")
 
-option(DISABLE_LOG "Disable all logging" OFF)
-option(USE_ZSTD_COMPRESS "Use zstd to compress network messages" OFF)
+# ---- Options ----------------------------------------------------------
+option(DISABLE_LOG        "Disable all logging"              OFF)
+option(USE_ZSTD_COMPRESS  "Compress network messages w/ zstd" OFF)
 
-# ---- Dependencies ----
+# ---- Dependencies (vcpkg manifest drives installation) ---------------
+# NOTE: Do NOT call include(FindProtobuf) — it uses legacy module mode
+#       and will find the wrong triplet. CONFIG mode is required.
 set(Protobuf_USE_STATIC_LIBS ON)
-find_package(Protobuf CONFIG REQUIRED)
-find_package(Threads  REQUIRED)
-find_package(absl     CONFIG REQUIRED)
+find_package(protobuf   CONFIG REQUIRED)
+find_package(Threads    REQUIRED)
+find_package(absl       CONFIG REQUIRED)
 find_package(utf8_range CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
-
 if(USE_ZSTD_COMPRESS)
   find_package(zstd CONFIG REQUIRED)
 endif()
 
-# ---- Protobuf codegen ----
+# ---- Protobuf codegen ------------------------------------------------
 protobuf_generate_cpp(net_PROTO_SRCS net_PROTO_HDRS proto/network_proto.proto)
 
-# ---- Sources ----
-file(GLOB emu_sources     eos_dll/*.cpp managers/*.cpp)
-file(GLOB socket_sources  extra/Socket/src/common/*.cpp extra/Socket/src/ipv4/*.cpp)
-file(GLOB utils_sources   extra/utils/src/*.cpp)
+# ---- Sources ----------------------------------------------------------
+file(GLOB emu_sources         eos_dll/*.cpp managers/*.cpp)
+file(GLOB socket_sources      extra/Socket/src/common/*.cpp extra/Socket/src/ipv4/*.cpp)
+file(GLOB utils_sources       extra/utils/src/*.cpp)
 file(GLOB mini_detour_sources extra/mini_detour/*.cpp)
-
 if(WIN32)
-  file(GLOB detours_sources extra/detours/*.cpp)
+  file(GLOB detours_sources   extra/detours/*.cpp)
 endif()
 
-# ---- Library target ----
+# ---- Library target --------------------------------------------------
 add_library(
   ${EPIC_API} SHARED
   ${emu_sources}
@@ -132,17 +108,20 @@ if(UNIX)
   set_target_properties(${EPIC_API} PROPERTIES PREFIX "")
 endif()
 
-# ---- Link libraries ----
+# ---- Link libraries --------------------------------------------------
 target_link_libraries(
-  ${EPIC_API}
-  PRIVATE
+  ${EPIC_API} PRIVATE
+
+  # Protobuf (lite is enough; pulls utf8_range + absl transitively via CONFIG)
   protobuf::libprotobuf-lite
   Threads::Threads
   nlohmann_json::nlohmann_json
+
+  # utf8_range - required by protobuf v4/v5
   utf8_range::utf8_validity
   utf8_range::utf8_range
 
-  # Abseil - all components required by protobuf v4+
+  # Abseil complete static set required by protobuf v6
   absl::base
   absl::city
   absl::civil_time
@@ -244,10 +223,9 @@ target_link_libraries(
   $<$<BOOL:${UNIX}>:dl>
 )
 
-# ---- Include directories ----
+# ---- Include directories ---------------------------------------------
 target_include_directories(
-  ${EPIC_API}
-  PRIVATE
+  ${EPIC_API} PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}
   eos_dll/
   managers/
@@ -258,18 +236,17 @@ target_include_directories(
   extra/Socket/include
 )
 
-# ---- Compile options ----
+# ---- Compile options -------------------------------------------------
 target_compile_options(
   ${EPIC_API} PUBLIC
   $<$<BOOL:${UNIX}>:-fPIC -fpermissive -fvisibility=hidden -Wl,--exclude-libs,ALL>
   $<$<AND:$<BOOL:${UNIX}>,$<BOOL:${X86}>>:-m32>
   $<$<AND:$<BOOL:${UNIX}>,$<BOOL:${X64}>>:-m64>
-  $<$<AND:$<CONFIG:>,$<BOOL:${MSVC}>>:/MP>
   $<$<AND:$<CONFIG:Debug>,$<BOOL:${MSVC}>>:/MP>
   $<$<AND:$<CONFIG:Release>,$<BOOL:${MSVC}>>:/MP>
 )
 
-# ---- Compile definitions ----
+# ---- Compile definitions ---------------------------------------------
 target_compile_definitions(
   ${EPIC_API} PUBLIC
   __EXPORT_SYMBOLS__
@@ -281,9 +258,8 @@ target_compile_definitions(
   $<$<STREQUAL:${CMAKE_BUILD_TYPE},Release>:EMU_RELEASE_BUILD NDEBUG>
 )
 
-# ---- Install rules ----
+# ---- Install rules ---------------------------------------------------
 set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR})
-
 if(WIN32)
   if(${CMAKE_BUILD_TYPE} STREQUAL "Debug" OR CICD_DEBUG)
     install(TARGETS ${EPIC_API} RUNTIME DESTINATION debug/${OUT_DIR})
