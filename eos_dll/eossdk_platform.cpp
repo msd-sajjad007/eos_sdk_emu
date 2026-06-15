@@ -75,8 +75,12 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                 case EOS_PLATFORM_OPTIONS_API_014: 
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options014*>(Options);
-                    APP_LOG(Log::LogLevel::DEBUG, "IntegratedPlatformOptionsContainerHandle = '%s'", pf->IntegratedPlatformOptionsContainerHandle);
-                    APP_LOG(Log::LogLevel::DEBUG, "OverrideLocaleCode = '%d'", *pf->TaskNetworkTimeoutSeconds);
+                    // IntegratedPlatformOptionsContainerHandle is an opaque handle, not a string — skip logging it
+                    // TaskNetworkTimeoutSeconds is optional and may be null — guard before deref
+                    if (pf->TaskNetworkTimeoutSeconds != nullptr)
+                        APP_LOG(Log::LogLevel::DEBUG, "TaskNetworkTimeoutSeconds = '%d'", *pf->TaskNetworkTimeoutSeconds);
+                    else
+                        APP_LOG(Log::LogLevel::DEBUG, "TaskNetworkTimeoutSeconds = (null/default)");
                     APP_LOG(Log::LogLevel::DEBUG, "DeploymentId = '%s'", _deployment_id.c_str());
                 }
                 case EOS_PLATFORM_OPTIONS_API_013:
@@ -84,7 +88,9 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                 case EOS_PLATFORM_OPTIONS_API_011:
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options011*>(Options);
-                    if (pf->RTCOptions != NULL) APP_LOG(Log::LogLevel::DEBUG, "RTCOptions = '%s'", pf->RTCOptions->ApiVersion);
+                    // RTCOptions and its ApiVersion field are both optional — guard both
+                    if (pf->RTCOptions != NULL && pf->RTCOptions->ApiVersion != 0)
+                        APP_LOG(Log::LogLevel::DEBUG, "RTCOptions.ApiVersion = '%d'", pf->RTCOptions->ApiVersion);
                 }
                 case EOS_PLATFORM_OPTIONS_API_010:
                 case EOS_PLATFORM_OPTIONS_API_009:
