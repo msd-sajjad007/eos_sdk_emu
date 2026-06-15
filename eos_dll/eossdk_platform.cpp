@@ -71,14 +71,14 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
         {
             _api_version = Options->ApiVersion;
 
-            // For any API version newer than what we know about, treat it as
-            // the highest version we support (API_014) and fall through safely.
-            // This prevents abort() crashes on newer game builds.
+            // Clamp any future unknown API version down to the highest we know.
+            // This prevents abort() on newer game builds while still running all
+            // the fallthrough cases below to populate every field we support.
             int32_t effective_version = Options->ApiVersion;
             if (effective_version > EOS_PLATFORM_OPTIONS_API_014)
             {
                 APP_LOG(Log::LogLevel::WARN,
-                    "EOS_Platform_Create: unknown API version %d, treating as %d",
+                    "EOS_Platform_Create: unknown API version %d, clamping to %d",
                     Options->ApiVersion, EOS_PLATFORM_OPTIONS_API_014);
                 effective_version = EOS_PLATFORM_OPTIONS_API_014;
             }
@@ -88,21 +88,21 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                 case EOS_PLATFORM_OPTIONS_API_014:
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options014*>(Options);
-                    // TaskNetworkTimeoutSeconds is optional and may be null — guard before deref
+                    // TaskNetworkTimeoutSeconds is optional — MUST guard before deref
                     if (pf->TaskNetworkTimeoutSeconds != nullptr)
                         APP_LOG(Log::LogLevel::DEBUG, "TaskNetworkTimeoutSeconds = '%d'", *pf->TaskNetworkTimeoutSeconds);
                     else
                         APP_LOG(Log::LogLevel::DEBUG, "TaskNetworkTimeoutSeconds = (null/default)");
-                }
+                } // FALLTHROUGH
                 case EOS_PLATFORM_OPTIONS_API_013:
                 case EOS_PLATFORM_OPTIONS_API_012:
                 case EOS_PLATFORM_OPTIONS_API_011:
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options011*>(Options);
-                    // RTCOptions and its ApiVersion field are both optional — guard both
-                    if (pf->RTCOptions != NULL && pf->RTCOptions->ApiVersion != 0)
+                    // RTCOptions is optional
+                    if (pf->RTCOptions != nullptr)
                         APP_LOG(Log::LogLevel::DEBUG, "RTCOptions.ApiVersion = '%d'", pf->RTCOptions->ApiVersion);
-                }
+                } // FALLTHROUGH
                 case EOS_PLATFORM_OPTIONS_API_010:
                 case EOS_PLATFORM_OPTIONS_API_009:
                 case EOS_PLATFORM_OPTIONS_API_008:
@@ -113,7 +113,7 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                         _ticket_budget_in_milliseconds = pf->TickBudgetInMilliseconds;
 
                     APP_LOG(Log::LogLevel::DEBUG, "TickBudgetInMilliseconds = '%d'", _ticket_budget_in_milliseconds);
-                }
+                } // FALLTHROUGH
                 case EOS_PLATFORM_OPTIONS_API_006:
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options006*>(Options);
@@ -121,7 +121,7 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                         _cache_directory = pf->CacheDirectory;
 
                     APP_LOG(Log::LogLevel::DEBUG, "CacheDirectory = '%s'", _cache_directory.c_str());
-                }
+                } // FALLTHROUGH
                 case EOS_PLATFORM_OPTIONS_API_005:
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options005*>(Options);
@@ -144,7 +144,7 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                     APP_LOG(Log::LogLevel::DEBUG, "OverrideLocaleCode = '%s'", _override_locale_code.c_str());
                     APP_LOG(Log::LogLevel::DEBUG, "DeploymentId = '%s'", _deployment_id.c_str());
                     APP_LOG(Log::LogLevel::DEBUG, "Flags = %llu", _flags);
-                }
+                } // FALLTHROUGH
                 case EOS_PLATFORM_OPTIONS_API_001:
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options001*>(Options);
@@ -173,9 +173,8 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                 break;
 
                 default:
-                    // Should never reach here due to version clamping above,
-                    // but log a warning instead of aborting.
-                    APP_LOG(Log::LogLevel::WARN, "EOS_Platform_Create: unhandled version %d after clamp, skipping version-specific init", effective_version);
+                    // Should never reach here due to version clamping above
+                    APP_LOG(Log::LogLevel::WARN, "Unhandled version %d after clamp", effective_version);
                     break;
             }
         }
