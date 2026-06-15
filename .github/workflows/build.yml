@@ -49,11 +49,12 @@ jobs:
         run: |
           $dest = "$env:LOCALAPPDATA\vcpkg\downloads"
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
-          $file = "$dest\nlohmann-json-3.11.3.tar.gz"
+          # vcpkg names the file with the 'v' prefix to match the tag
+          $file = "$dest\nlohmann-json-v3.11.3.tar.gz"
           if (-not (Test-Path $file)) {
             Write-Host "Downloading nlohmann/json v3.11.3..."
             Invoke-WebRequest `
-              -Uri "https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz" `
+              -Uri "https://github.com/nlohmann/json/archive/v3.11.3.tar.gz" `
               -OutFile $file `
               -UseBasicParsing
             Write-Host "Downloaded to $file"
