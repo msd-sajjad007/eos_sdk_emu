@@ -12,6 +12,11 @@ jobs:
     name: Windows x64
     runs-on: windows-2022
 
+    env:
+      VCPKG_DIR: ${{ github.workspace }}\vcpkg
+      VCPKG_TRIPLET: x64-windows-static
+      VCPKG_DISABLE_METRICS: 1
+
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -22,16 +27,16 @@ jobs:
         run: choco install ninja -y --no-progress
         shell: cmd
 
-      - name: Debug - show vcpkg paths
+      - name: Clone fresh vcpkg
         shell: cmd
         run: |
-          echo VCPKG_INSTALLATION_ROOT=%VCPKG_INSTALLATION_ROOT%
-          dir C:\vcpkg\vcpkg.exe 2>nul && echo C:\vcpkg\vcpkg.exe EXISTS || echo C:\vcpkg\vcpkg.exe NOT FOUND
+          git clone https://github.com/microsoft/vcpkg.git "%VCPKG_DIR%" --depth=1
+          "%VCPKG_DIR%\bootstrap-vcpkg.bat" -disableMetrics
 
-      - name: Install vcpkg dependencies into C:\vcpkg
+      - name: Install dependencies via fresh vcpkg
         shell: cmd
         run: |
-          C:\vcpkg\vcpkg.exe install protobuf abseil utf8-range nlohmann-json --triplet x64-windows-static --no-print-usage
+          "%VCPKG_DIR%\vcpkg.exe" install protobuf abseil utf8-range nlohmann-json --triplet %VCPKG_TRIPLET% --no-print-usage
 
       - name: Configure CMake (x64)
         shell: cmd
@@ -40,17 +45,17 @@ jobs:
           cmake -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DX64=ON ^
-            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake ^
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static ^
+            -DCMAKE_TOOLCHAIN_FILE="%VCPKG_DIR%/scripts/buildsystems/vcpkg.cmake" ^
+            -DVCPKG_TARGET_TRIPLET=%VCPKG_TRIPLET% ^
             -B build-win64
 
-      - name: Build (x64)
+      - name: Build
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           cmake --build build-win64 --config Release
 
-      - name: Install output DLL
+      - name: Install DLL
         shell: cmd
         run: cmake --install build-win64 --config Release
 
