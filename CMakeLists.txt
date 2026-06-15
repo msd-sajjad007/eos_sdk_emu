@@ -5,6 +5,10 @@ cmake_minimum_required(VERSION 3.15)
 
 # Workaround because cross-compiling with CMake + vcpkg fucks up this variable
 # making the 'find_*' functions/macros somehow fail to find the right arch.
+# There are conditions like
+#  CMAKE_SIZEOF_VOID_P = "4" then look for i386 libraries...
+# or
+#  CMAKE_SIZEOF_VOID_P = "8" then look for x86_64 libraries...
 if(X86 AND NOT X64)
   set(CMAKE_SIZEOF_VOID_P "4")
 elseif(X64 AND NOT X86)
@@ -13,10 +17,12 @@ else()
   message(FATAL_ERROR "Please define either -DX86=ON or -DX64=ON")
 endif()
 
-if(WIN32)
-  if(MSVC)
-    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
-    set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
+if(WIN32) # Setup some variables for Windows build
+  if(MSVC) # If building with MSVC
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS) # Disable warning about strncpy_s and his friends
+    #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:\"msvcrtd.lib\"")       # Disable this linkage
+    #set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /NODEFAULTLIB:\"msvcrtd.lib\"") # Disable this linkage
+    set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE) # Force to only build Debug & Release projects
 
     set(CompilerFlags
         CMAKE_CXX_FLAGS
@@ -29,14 +35,15 @@ if(WIN32)
     foreach(CompilerFlag ${CompilerFlags})
       string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
     endforeach()
+
   endif()
 
   if(X64)
     set(EPIC_API EOSSDK-Win64-Shipping)
-    set(OUT_DIR win64)
+	set(OUT_DIR win64)
   elseif(X86)
     set(EPIC_API EOSSDK-Win32-Shipping)
-    set(OUT_DIR win32)
+	set(OUT_DIR win32)
   else()
     message(FATAL_ERROR "Arch unknown")
   endif()
@@ -44,40 +51,46 @@ if(WIN32)
 elseif(APPLE)
   message(STATUS "CMake for APPLE is experimental")
   if(X64)
+    # Global flags for building steamapi (64bits)
     set(CMAKE_C_FLAGS             "${CMAKE_C_FLAGS} -m64")
     set(CMAKE_CXX_FLAGS           "${CMAKE_CXX_FLAGS} -m64")
     set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -m64")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m64")
     set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m64")
-    set(OUT_DIR macosx64)
+	set(OUT_DIR macosx64)
   elseif(X86)
+    # Global flags for building steamapi (32bits)
     set(CMAKE_C_FLAGS             "${CMAKE_C_FLAGS} -m32")
     set(CMAKE_CXX_FLAGS           "${CMAKE_CXX_FLAGS} -m32")
     set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -m32")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m32")
     set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m32")
-    set(OUT_DIR macosx32)
+	set(OUT_DIR macosx32)
   else()
     message(FATAL_ERROR "Arch unknown")
   endif()
+  #add_compile_options("-stdlib=libc++")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -stdlib=libc++")
+
   set(EPIC_API libEOSSDK-Mac-Shipping)
 
 elseif(UNIX)
   if(X64)
+    # Global flags for building steamapi (64bits)
     set(CMAKE_C_FLAGS             "${CMAKE_C_FLAGS} -m64")
     set(CMAKE_CXX_FLAGS           "${CMAKE_CXX_FLAGS} -m64")
     set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -m64")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m64")
     set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m64")
-    set(OUT_DIR linux64)
+	set(OUT_DIR linux64)
   elseif(X86)
+    # Global flags for building steamapi (32bits)
     set(CMAKE_C_FLAGS             "${CMAKE_C_FLAGS} -m32")
     set(CMAKE_CXX_FLAGS           "${CMAKE_CXX_FLAGS} -m32")
     set(CMAKE_EXE_LINKER_FLAGS    "${CMAKE_EXE_LINKER_FLAGS} -m32")
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m32")
     set(CMAKE_STATIC_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -m32")
-    set(OUT_DIR linux32)
+	set(OUT_DIR linux32)
   else()
     message(FATAL_ERROR "Arch unknown")
   endif()
@@ -85,6 +98,7 @@ elseif(UNIX)
 
 else()
   message(FATAL_ERROR "No CMake for other platforms")
+
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
@@ -98,41 +112,70 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Debug or Release")
 
 option(DISABLE_LOG "Disable all logging. Will reduce emu size and will speed it up (a bit)" OFF)
+
 option(USE_ZSTD_COMPRESS "Use zstd to compress network messages" OFF)
 
-# ---- Dependencies ----
 set(Protobuf_USE_STATIC_LIBS ON)
 include(FindProtobuf)
 find_package(Protobuf CONFIG REQUIRED)
-find_package(absl CONFIG REQUIRED)
-find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Threads REQUIRED)
+find_package(absl CONFIG REQUIRED)
+find_package(utf8_range CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 if(USE_ZSTD_COMPRESS)
   find_package(zstd CONFIG REQUIRED)
 endif()
 
 ########################################
-## Proto generated sources
+## net.h net.cc
 protobuf_generate_cpp(net_PROTO_SRCS net_PROTO_HDRS proto/network_proto.proto)
 
 ########################################
-## Source files
-file(GLOB emu_sources     eos_dll/*.cpp managers/*.cpp)
-file(GLOB socket_sources  extra/Socket/src/common/*.cpp extra/Socket/src/ipv4/*.cpp)
-file(GLOB utils_sources   extra/utils/src/*.cpp)
-file(GLOB mini_detour_sources extra/mini_detour/*.cpp)
+## steamclient[64].dll
+file(
+  GLOB
+  emu_sources
+  eos_dll/*.cpp
+  managers/*.cpp
+)
 
 if(WIN32)
-  file(GLOB detours_sources extra/detours/*.cpp)
+  file(
+    GLOB
+    detours_sources
+    extra/detours/*.cpp
+  )
 endif()
 
+file(
+  GLOB
+  socket_sources
+  extra/Socket/src/common/*.cpp
+  extra/Socket/src/ipv4/*.cpp
+)
+
+file(
+  GLOB
+  utils_sources
+  extra/utils/src/*.cpp
+)
+
+file(
+  GLOB
+  mini_detour_sources
+  extra/mini_detour/*.cpp
+)
+
 ########################################
+## 
+
 add_library(
   ${EPIC_API}
   SHARED
   ${emu_sources}
   ${net_PROTO_SRCS}
+  
   ${mini_detour_sources}
   ${socket_sources}
   ${utils_sources}
@@ -147,18 +190,17 @@ target_link_libraries(
   ${EPIC_API}
   protobuf::libprotobuf-lite
   Threads::Threads
-  nlohmann_json::nlohmann_json
   $<$<BOOL:${USE_ZSTD_COMPRESS}>:libzstd>
+  nlohmann_json::nlohmann_json
 
-  # Windows system libs
-  $<$<BOOL:${WIN32}>:ws2_32>
-  $<$<BOOL:${WIN32}>:iphlpapi>
-  $<$<BOOL:${WIN32}>:shell32>
-  $<$<BOOL:${WIN32}>:user32>
+  # utf8_range - required by protobuf v4/v5
+  utf8_range::utf8_validity
+  utf8_range::utf8_range
 
-  # Abseil static component libs (needed by protobuf v4/v5 on ALL platforms).
-  # abseil_dll was a DLL-mode stub that does not exist with
-  # VCPKG_LIBRARY_LINKAGE=static - caused 77 LNK2019 unresolved externals.
+  # Abseil static libs - required by protobuf v4/v5
+  absl::base
+  absl::city
+  absl::civil_time
   absl::cord
   absl::cord_internal
   absl::cordz_functions
@@ -168,34 +210,34 @@ target_link_libraries(
   absl::crc32c
   absl::crc_cord_state
   absl::crc_internal
-  absl::str_format_internal
-  absl::strings
-  absl::strings_internal
-  absl::string_view
-  absl::base
-  absl::raw_logging_internal
-  absl::log_severity
-  absl::int128
-  absl::bits
-  absl::hash
-  absl::city
-  absl::bad_optional_access
-  absl::bad_variant_access
-  absl::status
-  absl::statusor
-  absl::strerror
-  absl::synchronization
-  absl::graphcycles_internal
-  absl::kernel_timeout_internal
-  absl::stacktrace
-  absl::symbolize
   absl::debugging_internal
   absl::demangle_internal
-  absl::malloc_internal
-  absl::time
-  absl::time_zone
-  absl::civil_time
+  absl::die_if_null
+  absl::examine_stack
   absl::exponential_biased
+  absl::failure_signal_handler
+  absl::flags
+  absl::flags_commandlineflag
+  absl::flags_commandlineflag_internal
+  absl::flags_config
+  absl::flags_internal
+  absl::flags_marshalling
+  absl::flags_parse
+  absl::flags_private_handle_accessor
+  absl::flags_program_name
+  absl::flags_reflection
+  absl::flags_usage
+  absl::flags_usage_internal
+  absl::graphcycles_internal
+  absl::hash
+  absl::hashtablez_sampler
+  absl::int128
+  absl::kernel_timeout_internal
+  absl::leak_check
+  absl::log_entry
+  absl::log_flags
+  absl::log_globals
+  absl::log_initialize
   absl::log_internal_check_op
   absl::log_internal_conditions
   absl::log_internal_format
@@ -204,21 +246,60 @@ target_link_libraries(
   absl::log_internal_message
   absl::log_internal_nullguard
   absl::log_internal_proto
+  absl::log_severity
   absl::log_sink
-  absl::log_entry
-  absl::log_initialize
-  absl::log_globals
+  absl::log_sink_registry
+  absl::low_level_hash
+  absl::malloc_internal
+  absl::periodic_sampler
+  absl::random_distributions
+  absl::random_internal_distribution_test_util
+  absl::random_internal_fast_uniform_bits
+  absl::random_internal_fastmath
+  absl::random_internal_generate_real
+  absl::random_internal_iostream_state_saver
+  absl::random_internal_mock_helpers
+  absl::random_internal_nonsecure_base
+  absl::random_internal_pcg_engine
+  absl::random_internal_platform
+  absl::random_internal_pool_urbg
+  absl::random_internal_randen
+  absl::random_internal_randen_hwaes
+  absl::random_internal_randen_hwaes_impl
+  absl::random_internal_randen_slow
+  absl::random_internal_salted_seed_seq
+  absl::random_internal_seed_material
+  absl::random_internal_uniform_helper
+  absl::random_internal_wide_multiply
+  absl::random_seed_gen_exception
+  absl::random_seed_sequences
+  absl::raw_hash_set
+  absl::raw_logging_internal
+  absl::scoped_set_env
+  absl::spinlock_wait
+  absl::stacktrace
+  absl::status
+  absl::statusor
+  absl::str_format_internal
+  absl::strerror
+  absl::strings
+  absl::strings_internal
+  absl::symbolize
+  absl::synchronization
+  absl::throw_delegate
+  absl::time
+  absl::time_zone
   absl::vlog_config_internal
-  absl::flags_internal
-  absl::flags_reflection
-  absl::flags_private_handle_accessor
-  absl::flags_commandlineflag
-  absl::flags_commandlineflag_internal
-  absl::flags_config
-  absl::flags_marshalling
-  absl::flags_program_name
 
-  # Linux/Mac .so/.dylib loading
+  # For library network
+  $<$<BOOL:${WIN32}>:ws2_32>
+  $<$<BOOL:${WIN32}>:iphlpapi>
+  # For library play .wav
+  #$<$<BOOL:${WIN32}>:winmm>
+  $<$<BOOL:${WIN32}>:shell32>
+  $<$<BOOL:${WIN32}>:user32>
+
+  # For library .so/.dylib loading
   $<$<BOOL:${UNIX}>:dl>
 )
 
@@ -226,8 +307,10 @@ target_include_directories(
   ${EPIC_API}
   PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}
+  
   eos_dll/
   managers/
+  
   extra/
   extra/eos_sdk/
   extra/mini_detour/
@@ -238,9 +321,11 @@ target_include_directories(
 target_compile_options(
   ${EPIC_API}
   PUBLIC
+  
   $<$<BOOL:${UNIX}>:-fPIC -fpermissive -fvisibility=hidden -Wl,--exclude-libs,ALL>
   $<$<AND:$<BOOL:${UNIX}>,$<BOOL:${X86}>>:-m32>
   $<$<AND:$<BOOL:${UNIX}>,$<BOOL:${X64}>>:-m64>
+  
   $<$<AND:$<CONFIG:>,$<BOOL:${MSVC}>>:/MP>
   $<$<AND:$<CONFIG:Debug>,$<BOOL:${MSVC}>>:/MP>
   $<$<AND:$<CONFIG:Release>,$<BOOL:${MSVC}>>:/MP>
@@ -252,8 +337,11 @@ target_compile_definitions(
   __EXPORT_SYMBOLS__
   EPIC_SHARED_LIBRARY
   EPIC_EXPORT
+
   $<$<BOOL:${USE_ZSTD_COMPRESS}>:NETWORK_COMPRESS>
+  
   $<$<BOOL:${UNIX}>:GNUC>
+
   $<$<BOOL:${DISABLE_LOG}>:DISABLE_LOG>
   $<$<STREQUAL:${CMAKE_BUILD_TYPE},Release>:EMU_RELEASE_BUILD NDEBUG>
 )
@@ -264,14 +352,28 @@ set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR})
 
 if(WIN32)
   if(${CMAKE_BUILD_TYPE} STREQUAL "Debug" OR CICD_DEBUG)
-    install(TARGETS ${EPIC_API} RUNTIME DESTINATION debug/${OUT_DIR})
+    install(
+      TARGETS ${EPIC_API}
+      RUNTIME DESTINATION debug/${OUT_DIR}
+    )
   else()
-    install(TARGETS ${EPIC_API} RUNTIME DESTINATION release/${OUT_DIR})
+    install(
+      TARGETS ${EPIC_API}
+      RUNTIME DESTINATION release/${OUT_DIR}
+    )
   endif()
+
 elseif(APPLE OR UNIX)
   if(${CMAKE_BUILD_TYPE} STREQUAL "Debug")
-    install(TARGETS ${EPIC_API} LIBRARY DESTINATION debug/${OUT_DIR})
+    install(
+      TARGETS ${EPIC_API}
+      LIBRARY DESTINATION debug/${OUT_DIR}
+    )
   else()
-    install(TARGETS ${EPIC_API} LIBRARY DESTINATION release/${OUT_DIR})
+    install(
+      TARGETS ${EPIC_API}
+      LIBRARY DESTINATION release/${OUT_DIR}
+    )
   endif()
+  
 endif()
