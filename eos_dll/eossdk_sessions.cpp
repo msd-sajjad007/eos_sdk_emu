@@ -258,8 +258,21 @@ bool EOSSDK_Sessions::is_player_registered(std::string const& player, session_st
 
 // ---------------------------------------------------------------------------
 // FIX 1: Detect real local IP (works with Hamachi/ZeroTier/any VPN adapter)
+// Uses get_ifaces_ip() from os_funcs.h to enumerate all network interfaces.
 // The custom_broadcast field in JSON can override with a specific IP if needed.
 // ---------------------------------------------------------------------------
+static std::string uint32_to_ipstr(uint32_t ip)
+{
+    // ip is host-ordered
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%u.%u.%u.%u",
+        (ip >> 24) & 0xFF,
+        (ip >> 16) & 0xFF,
+        (ip >>  8) & 0xFF,
+        (ip      ) & 0xFF);
+    return std::string(buf);
+}
+
 static std::string get_best_host_address()
 {
     // If user set custom_broadcast in JSON, use that directly
@@ -270,31 +283,41 @@ static std::string get_best_host_address()
         return custom;
     }
 
-    // Try to get a non-loopback local IP from all interfaces
+    // Enumerate all interfaces via os_funcs API
+    auto const& ifaces = get_ifaces_ip();
+
     std::string best_ip;
-    auto ips = get_local_ips(false); // false = skip loopback
-    for (auto const& ip : ips)
+    for (auto const& iface : ifaces)
     {
-        if (ip.empty() || ip == "127.0.0.1")
+        uint32_t ip = iface.ip; // host-ordered
+        // Skip loopback (127.x.x.x)
+        if ((ip >> 24) == 127)
             continue;
-        // Prefer VPN ranges: 25.x (Hamachi), 10.x (ZeroTier/corporate VPN), 192.168.x
-        if (ip.substr(0, 3) == "25." ||
-            ip.substr(0, 3) == "10." ||
-            ip.substr(0, 8) == "192.168." ||
-            ip.substr(0, 8) == "172.16."  ||
-            ip.substr(0, 8) == "172.17."  ||
-            ip.substr(0, 8) == "172.31.")
+        // Skip 0.0.0.0
+        if (ip == 0)
+            continue;
+
+        std::string ip_str = uint32_to_ipstr(ip);
+        uint8_t first_octet  = (ip >> 24) & 0xFF;
+        uint8_t second_octet = (ip >> 16) & 0xFF;
+
+        // Prefer VPN/private ranges: 25.x (Hamachi), 10.x, 172.16-31.x, 192.168.x
+        if (first_octet == 25 ||
+            first_octet == 10 ||
+            (first_octet == 172 && second_octet >= 16 && second_octet <= 31) ||
+            (first_octet == 192 && second_octet == 168))
         {
-            best_ip = ip;
+            best_ip = ip_str;
             break;
         }
+
+        // Keep first non-loopback as fallback
+        if (best_ip.empty())
+            best_ip = ip_str;
     }
 
-    if (best_ip.empty() && !ips.empty())
-        best_ip = ips[0]; // fallback: first available
-
     if (best_ip.empty())
-        best_ip = "127.0.0.1"; // last resort
+        best_ip = "127.0.0.1";
 
     APP_LOG(Log::LogLevel::INFO, "Auto-detected host address: %s", best_ip.c_str());
     return best_ip;
