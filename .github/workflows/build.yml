@@ -1,5 +1,6 @@
 name: Build
 
+
 on:
   push:
     branches: [ master ]
@@ -7,20 +8,24 @@ on:
     branches: [ master ]
   workflow_dispatch:
 
+
 jobs:
   build-win64:
     name: Windows x64
     runs-on: windows-2022
 
+
     env:
       VCPKG_TRIPLET: x64-windows-static
       VCPKG_DISABLE_METRICS: 1
+
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
 
       - name: Bootstrap vcpkg
         shell: pwsh
@@ -38,7 +43,6 @@ jobs:
             .\bootstrap-vcpkg.bat -disableMetrics
             Pop-Location
           }
-
       - name: Cache vcpkg packages
         uses: actions/cache@v4
         id: vcpkg-cache
@@ -46,20 +50,21 @@ jobs:
           path: vcpkg_installed
           key: vcpkg-win64-static-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'overlay/**') }}
 
+
       - name: Install dependencies
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          # --overlay-ports points to our patched abseil that skips vcpkg_fixup_pkgconfig
+          # --overlay-ports points to our patched abseil and nlohmann-json that skip vcpkg_fixup_pkgconfig
           .\vcpkg\vcpkg.exe install `
             --triplet $env:VCPKG_TRIPLET `
             --overlay-ports="${{ github.workspace }}\overlay" `
             --x-install-root="${{ github.workspace }}\vcpkg_installed" `
             --no-print-usage
-
       - name: Install Ninja
         shell: cmd
         run: choco install ninja -y --no-progress
+
 
       - name: Configure CMake
         shell: cmd
@@ -74,16 +79,15 @@ jobs:
             -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%/vcpkg_installed" ^
             -DVCPKG_OVERLAY_PORTS="%GITHUB_WORKSPACE%/overlay" ^
             -B build-win64
-
       - name: Build
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           cmake --build build-win64 --config Release
-
       - name: Install
         shell: cmd
         run: cmake --install build-win64 --config Release
+
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
