@@ -12,46 +12,44 @@ jobs:
     name: Windows x64
     runs-on: windows-2022
 
+    env:
+      VCPKG_COMMIT: a34c873a9717a888f58dc05268dea15592c2f822
+
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # ── Cache the entire vcpkg installed tree ──────────────────────────
-      - name: Cache vcpkg packages
+      - name: Cache vcpkg installed packages
         uses: actions/cache@v4
         id: vcpkg-cache
         with:
           path: ${{ github.workspace }}\vcpkg_installed
-          key: vcpkg-x64-windows-static-a34c873-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-x64-static-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
 
-      # ── Bootstrap vcpkg at pinned commit (always needed for toolchain) ─
-      - name: Clone & bootstrap vcpkg
+      - name: Clone vcpkg at pinned commit
         shell: pwsh
         run: |
-          git clone https://github.com/microsoft/vcpkg.git vcpkg --depth=1 --branch master
-          Set-Location vcpkg
-          git fetch --depth=1 origin a34c873a9717a888f58dc05268dea15592c2f822
-          git checkout a34c873a9717a888f58dc05268dea15592c2f822
+          git clone https://github.com/microsoft/vcpkg.git vcpkg
+          cd vcpkg
+          git checkout $env:VCPKG_COMMIT
           .\bootstrap-vcpkg.bat -disableMetrics
 
-      # ── Install deps (skipped on cache hit) ───────────────────────────
-      - name: Install vcpkg dependencies
+      - name: Install vcpkg dependencies (manifest mode)
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         shell: pwsh
         env:
           VCPKG_DISABLE_METRICS: 1
+          VCPKG_FEATURE_FLAGS: -binarycaching
         run: |
-          $env:VCPKG_FEATURE_FLAGS = "-binarycaching,-compilertracking,-registries,-versions"
           .\vcpkg\vcpkg.exe install `
-            protobuf abseil utf8-range nlohmann-json `
             --triplet x64-windows-static `
             --x-install-root="${{ github.workspace }}\vcpkg_installed" `
             --no-print-usage
 
       - name: Install Ninja
-        shell: pwsh
+        shell: cmd
         run: choco install ninja -y --no-progress
 
       - name: Configure CMake
