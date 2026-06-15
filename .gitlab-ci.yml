@@ -17,10 +17,7 @@ static:linux:deps:
     - cp -f vcpkg_triplets/*.cmake /vcpkg/triplets/
     - VCPKG_PATH=$(pwd)/vcpkg
     - TRIPLET=x64-linux-nemirtingas
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install nlohmann-json:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install nlohmann-fifo-map:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install zstd:${TRIPLET} || exit 1
+    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf abseil nlohmann-json nlohmann-fifo-map zstd --triplet ${TRIPLET} || exit 1
     - exit 0
 
   cache:
@@ -39,18 +36,12 @@ static:windows:deps:
   script:
     - cp -f vcpkg_triplets/*.cmake /vcpkg/triplets/
     - VCPKG_PATH=$(pwd)/vcpkg
-    - TRIPLET=x64-linux
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf:${TRIPLET} || exit 1
-    - TRIPLET=x86-windows-nemirtingas
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install nlohmann-json:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install nlohmann-fifo-map:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install zstd:${TRIPLET} || exit 1
-    - TRIPLET=x64-windows-nemirtingas
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install nlohmann-json:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install nlohmann-fifo-map:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install zstd:${TRIPLET} || exit 1
+    # x64-linux is needed as the host toolchain for the Windows cross-compiler
+    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf abseil --triplet x64-linux || exit 1
+    # x86 Windows target
+    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf abseil nlohmann-json nlohmann-fifo-map zstd --triplet x86-windows-nemirtingas || exit 1
+    # x64 Windows target
+    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf abseil nlohmann-json nlohmann-fifo-map zstd --triplet x64-windows-nemirtingas || exit 1
     - exit 0
 
   cache:
@@ -69,13 +60,9 @@ static:macosx:deps:
   script:
     - cp -f vcpkg_triplets/*.cmake /vcpkg/triplets/
     - VCPKG_PATH=$(pwd)/vcpkg
-    - TRIPLET=x64-linux
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf:${TRIPLET} || exit 1
-    - TRIPLET=x64-macosx-nemirtingas
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install nlohmann-json:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install nlohmann-fifo-map:${TRIPLET} || exit 1
-    - vcpkg "--x-install-root=${VCPKG_PATH}" install zstd:${TRIPLET} || exit 1
+    # x64-linux is needed as the host toolchain for the macOS cross-compiler
+    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf abseil --triplet x64-linux || exit 1
+    - vcpkg "--x-install-root=${VCPKG_PATH}" install protobuf abseil nlohmann-json nlohmann-fifo-map zstd --triplet x64-macosx-nemirtingas || exit 1
     - exit 0
 
   cache:
@@ -139,6 +126,7 @@ build:windows:
     - cmake -G Ninja -Wno-dev -DX64=ON -DCMAKE_BUILD_TYPE=Release "-DVCPKG_TARGET_TRIPLET=${TRIPLET}" "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}" "-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=${CHAINLOAD}" "-D_VCPKG_INSTALLED_DIR=${VCPKG_PATH}" -S . -B "${OUT}"
     - cmake --build "${OUT}"
     - cmake --install "${OUT}"
+
   artifacts:
     paths:
       - release/
@@ -165,7 +153,7 @@ build:macosx:
     - cmake -G Ninja -Wno-dev -DX64=ON -DCMAKE_BUILD_TYPE=Release "-DVCPKG_TARGET_TRIPLET=${TRIPLET}" "-DCMAKE_TOOLCHAIN_FILE=${TOOLCHAIN}" "-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=${CHAINLOAD}" "-D_VCPKG_INSTALLED_DIR=${VCPKG_PATH}" -S . -B "${OUT}"
     - cmake --build "${OUT}"
     - cmake --install "${OUT}"
-    - mkdir release/macosx
+    - mkdir -p release/macosx
 
   artifacts:
     paths:
@@ -203,7 +191,7 @@ sign:
     - build:linux
     - build:macosx
     - build:launcher
-    
+
   script:
     - apk update && apk add libcurl curl-dev openssl-dev autoconf build-base automake libtool git openssl
     - git clone https://github.com/dmcgowan/osslsigncode
@@ -241,7 +229,7 @@ deploy:
     - sign
   script:
     - echo $CI_JOB_ID > job_id
-    
+
   artifacts:
     paths:
       - release/
@@ -265,4 +253,3 @@ pages:
       - public/
   only:
     - master
-
