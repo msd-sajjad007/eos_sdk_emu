@@ -17,6 +17,8 @@ jobs:
       VCPKG_DEFAULT_TRIPLET: x64-windows-static
       VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static
       VCPKG_DISABLE_METRICS: 1
+      # Prevents vcpkg from trying to download/run pkgconfig/MSYS2
+      VCPKG_FEATURE_FLAGS: -binarycaching
 
     steps:
       - name: Checkout (with submodules)
@@ -24,15 +26,16 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgGitCommitId: c82f74667287d3dc386bce81e44964370c91a289
-          runVcpkgInstall: true
-
       - name: Install Ninja
         run: choco install ninja -y --no-progress
         shell: cmd
+
+      - name: Setup vcpkg (pinned baseline)
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: a34c873a9717a888f58dc05268dea15592c2f822
+          runVcpkgInstall: true
+          vcpkgJsonGlob: vcpkg.json
 
       - name: Configure CMake (x64)
         shell: cmd
