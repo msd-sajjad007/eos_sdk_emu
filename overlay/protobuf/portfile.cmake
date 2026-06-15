@@ -9,8 +9,8 @@ vcpkg_from_github(
         fix-default-proto-file-path.patch
         fix-arm64-msvc.patch
         # fix-utf8-range.patch intentionally removed:
-        # utf8_range is a standalone overlay port; the patch forces bundled source
-        # which conflicts with the installed package and breaks CMake configure.
+        # utf8_range is a standalone overlay port (no-op shim); protobuf
+        # builds and installs utf8_range from its own bundled source.
 )
 
 string(COMPARE EQUAL "${TARGET_TRIPLET}" "${HOST_TRIPLET}" protobuf_BUILD_PROTOC_BINARIES)
@@ -51,7 +51,6 @@ vcpkg_cmake_configure(
         -Dprotobuf_BUILD_PROTOC_BINARIES=${protobuf_BUILD_PROTOC_BINARIES}
         -Dprotobuf_BUILD_LIBPROTOC=${protobuf_BUILD_LIBPROTOC}
         -Dprotobuf_ABSL_PROVIDER=package
-        -Dutf8_range_ENABLE_INSTALL=OFF
         ${FEATURE_OPTIONS}
 )
 
