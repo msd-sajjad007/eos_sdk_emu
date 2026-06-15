@@ -12,41 +12,59 @@ jobs:
     name: Windows x64
     runs-on: windows-2022
 
-    env:
-      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
-      VCPKG_DEFAULT_TRIPLET: x64-windows-static
-      VCPKG_DEFAULT_HOST_TRIPLET: x64-windows-static
-      VCPKG_DISABLE_METRICS: 1
-      # Prevents vcpkg from trying to download/run pkgconfig/MSYS2
-      VCPKG_FEATURE_FLAGS: -binarycaching
-
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install Ninja
-        run: choco install ninja -y --no-progress
-        shell: cmd
-
-      - name: Setup vcpkg (pinned baseline)
-        uses: lukka/run-vcpkg@v11
+      # ── Cache the entire vcpkg installed tree ──────────────────────────
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        id: vcpkg-cache
         with:
-          vcpkgGitCommitId: a34c873a9717a888f58dc05268dea15592c2f822
-          runVcpkgInstall: true
-          vcpkgJsonGlob: vcpkg.json
+          path: ${{ github.workspace }}\vcpkg_installed
+          key: vcpkg-x64-windows-static-a34c873-${{ hashFiles('vcpkg.json') }}
 
-      - name: Configure CMake (x64)
+      # ── Bootstrap vcpkg at pinned commit (always needed for toolchain) ─
+      - name: Clone & bootstrap vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git vcpkg --depth=1 --branch master
+          Set-Location vcpkg
+          git fetch --depth=1 origin a34c873a9717a888f58dc05268dea15592c2f822
+          git checkout a34c873a9717a888f58dc05268dea15592c2f822
+          .\bootstrap-vcpkg.bat -disableMetrics
+
+      # ── Install deps (skipped on cache hit) ───────────────────────────
+      - name: Install vcpkg dependencies
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          VCPKG_DISABLE_METRICS: 1
+        run: |
+          $env:VCPKG_FEATURE_FLAGS = "-binarycaching,-compilertracking,-registries,-versions"
+          .\vcpkg\vcpkg.exe install `
+            protobuf abseil utf8-range nlohmann-json `
+            --triplet x64-windows-static `
+            --x-install-root="${{ github.workspace }}\vcpkg_installed" `
+            --no-print-usage
+
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja -y --no-progress
+
+      - name: Configure CMake
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           cmake -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DX64=ON ^
-            -DCMAKE_TOOLCHAIN_FILE="%VCPKG_ROOT%/scripts/buildsystems/vcpkg.cmake" ^
+            -DCMAKE_TOOLCHAIN_FILE="%GITHUB_WORKSPACE%/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
             -DVCPKG_TARGET_TRIPLET=x64-windows-static ^
             -DVCPKG_HOST_TRIPLET=x64-windows-static ^
+            -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%/vcpkg_installed" ^
             -B build-win64
 
       - name: Build
