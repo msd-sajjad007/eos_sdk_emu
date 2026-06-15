@@ -1,4 +1,4 @@
-name: Build Windows x64
+name: Build
 
 on:
   push:
@@ -13,55 +13,55 @@ jobs:
     runs-on: windows-2022
 
     env:
-      VCPKG_COMMIT: c82f74667287d3dc386bce81e44964370c91a289
       VCPKG_TRIPLET: x64-windows-static
       VCPKG_DISABLE_METRICS: 1
-      # Disables pkgconfig post-build fixup that tries to download MSYS2 packages
-      VCPKG_FEATURE_FLAGS: -binarycaching,-compilertracking
-      # Skips the pkgconfig acquisition entirely
-      VCPKG_KEEP_ENV_VARS: VCPKG_FEATURE_FLAGS
 
     steps:
-      - name: Checkout (with submodules)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Cache vcpkg installed packages
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          # Use the vcpkg submodule if present, otherwise clone a known-good commit
+          if (Test-Path ".\vcpkg\bootstrap-vcpkg.bat") {
+            cd vcpkg
+            # Fetch full history so baseline.json is reachable in git objects
+            git fetch --unshallow 2>$null; git fetch origin 2>$null
+            .\bootstrap-vcpkg.bat -disableMetrics
+            cd ..
+          } else {
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+            cd vcpkg
+            # c82f746 is a recent commit that has versions/baseline.json
+            git checkout c82f74667287d3dc386bce81e44964370c91a289
+            .\bootstrap-vcpkg.bat -disableMetrics
+            cd ..
+          }
+
+      - name: Cache vcpkg packages
         uses: actions/cache@v4
         id: vcpkg-cache
         with:
-          path: ${{ github.workspace }}\vcpkg_installed
-          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
+          path: vcpkg_installed
+          key: vcpkg-win64-static-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
 
-      - name: Clone & bootstrap vcpkg
-        shell: pwsh
-        run: |
-          git clone https://github.com/microsoft/vcpkg.git vcpkg
-          cd vcpkg
-          git checkout $env:VCPKG_COMMIT
-          .\bootstrap-vcpkg.bat -disableMetrics
-
-      - name: Install vcpkg dependencies (classic mode, no version resolution)
+      - name: Install dependencies
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          # Classic mode: pass packages explicitly, bypasses manifest/baseline entirely
-          # VCPKG_DISABLE_PKGCONFIG_FIXUP prevents the MSYS2 pkgconf download
-          $env:VCPKG_DISABLE_PKGCONFIG_FIXUP = "1"
-          $env:VCPKG_FEATURE_FLAGS = "-binarycaching,-compilertracking,-registries,-versions"
+          # Manifest mode: reads vcpkg.json, uses builtin-baseline for version resolution
+          # No --classic flag needed or supported
           .\vcpkg\vcpkg.exe install `
-            protobuf:$env:VCPKG_TRIPLET `
-            abseil:$env:VCPKG_TRIPLET `
-            utf8-range:$env:VCPKG_TRIPLET `
-            nlohmann-json:$env:VCPKG_TRIPLET `
-            --classic `
+            --triplet $env:VCPKG_TRIPLET `
             --x-install-root="${{ github.workspace }}\vcpkg_installed" `
             --no-print-usage
 
       - name: Install Ninja
-        shell: cmd
         run: choco install ninja -y --no-progress
+        shell: cmd
 
       - name: Configure CMake
         shell: cmd
@@ -82,11 +82,11 @@ jobs:
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           cmake --build build-win64 --config Release
 
-      - name: Install DLL
+      - name: Install
         shell: cmd
         run: cmake --install build-win64 --config Release
 
-      - name: Upload EOSSDK-Win64-Shipping.dll
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: EOSSDK-Win64-Shipping
