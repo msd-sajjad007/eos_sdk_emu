@@ -1,7 +1,10 @@
 {
   "name": "abseil",
-  "version-date": "20240722.0",
-  "description": "Open-source collection of C++ library code designed to augment the C++ standard library (overlay: pkgconfig disabled)",
+  "version": "20260107.1",
+  "port-version": 3,
+  "description": [
+    "Abseil is an open-source collection of C++ library code designed to augment the C++ standard library."
+  ],
   "homepage": "https://github.com/abseil/abseil-cpp",
   "license": "Apache-2.0",
   "features": {
