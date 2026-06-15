@@ -151,4 +151,17 @@ public:
 
     std::set<peer_t> TCPSendToAllPeers(Network_Message_pb& msg);
     bool TCPSendTo(Network_Message_pb& msg);
+
+    // Returns the first non-loopback local IP that the network layer is bound to.
+    // This is the ZeroTier / LAN IP that remote peers can connect back to.
+    peer_t get_local_ip() const
+    {
+        std::lock_guard<std::recursive_mutex> lock(const_cast<std::recursive_mutex&>(local_mutex));
+        for (auto const& pid : _my_peer_ids)
+        {
+            if (!pid.empty() && pid != "127.0.0.1")
+                return pid;
+        }
+        return "127.0.0.1";
+    }
 };

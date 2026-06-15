@@ -303,7 +303,11 @@ EOS_EResult EOSSDK_Sessions::CreateSessionModification(const EOS_Sessions_Create
     EOSSDK_SessionModification* modif = new EOSSDK_SessionModification;
     modif->_api_version = Options->ApiVersion;
     modif->_type = EOSSDK_SessionModification::modif_type::creation;
-    modif->_infos.set_host_address("127.0.0.1");
+
+    // Use the real local IP so remote peers can connect back to the host.
+    // get_local_ip() returns the first non-loopback IP (ZeroTier / LAN IP).
+    modif->_infos.set_host_address(GetNetwork().get_local_ip());
+    APP_LOG(Log::LogLevel::DEBUG, "CreateSessionModification: host_address set to %s", modif->_infos.host_address().c_str());
 
     switch (Options->ApiVersion)
     {
@@ -1548,7 +1552,6 @@ bool EOSSDK_Sessions::send_to_all_members(Network_Message_pb & msg, session_stat
 bool EOSSDK_Sessions::send_session_info_request(Network::peer_t const& peerid, Session_Infos_Request_pb* req)
 {
     TRACE_FUNC();
-    // TODO: Make it P2P, send it to all, will have to filter results
     std::string const& user_id = Settings::Inst().productuserid->to_string();
 
     Network_Message_pb msg;
@@ -1928,9 +1931,6 @@ bool EOSSDK_Sessions::on_session_join_response(Network_Message_pb const& msg, Se
                     APP_LOG(Log::LogLevel::DEBUG, "(%s) Join accepted.", msg.source_id().c_str());
                     it->second->done = true;
                     _sessions_join.erase(it);
-                    // Add myself to the session
-                    //GetEOS_Connect().add_session(GetProductUserId(session_it->second.infos.session_id()), session_it->second.infos.session_name());
-
                     session_it->second.state = session_state_t::state_e::joined;
                     add_player_to_session(user_id, &session_it->second);
                 }
