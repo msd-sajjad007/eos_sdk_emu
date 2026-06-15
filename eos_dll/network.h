@@ -26,6 +26,7 @@
 #include "common_includes.h"
 #include "settings.h"
 #include "task.h"
+#include "os_funcs.h"
 
 class IRunNetwork
 {
@@ -151,4 +152,41 @@ public:
 
     std::set<peer_t> TCPSendToAllPeers(Network_Message_pb& msg);
     bool TCPSendTo(Network_Message_pb& msg);
+
+    // Returns the best local IP for use as a session host address.
+    // Prefers VPN ranges (Hamachi 25.x, ZeroTier 10.x / 192.168.x / 172.16-31.x).
+    // Falls back to any non-loopback IP, then 127.0.0.1.
+    // Honours Settings::custom_broadcast if set.
+    std::string get_local_ip() const
+    {
+        // User override via JSON custom_broadcast field
+        std::string const& custom = Settings::Inst().custom_broadcast;
+        if (!custom.empty() && custom != "0.0.0.0")
+            return custom;
+
+        auto const& ifaces = get_ifaces_ip();
+        std::string best;
+        for (auto const& iface : ifaces)
+        {
+            uint32_t ip = iface.ip; // host-ordered
+            uint8_t a = (ip >> 24) & 0xFF;
+            uint8_t b = (ip >> 16) & 0xFF;
+
+            if (a == 127 || ip == 0)
+                continue;
+
+            char buf[16];
+            snprintf(buf, sizeof(buf), "%u.%u.%u.%u", a, b, (ip >> 8) & 0xFF, ip & 0xFF);
+
+            // Prefer known VPN / private ranges
+            if (a == 25 || a == 10 ||
+                (a == 172 && b >= 16 && b <= 31) ||
+                (a == 192 && b == 168))
+                return std::string(buf);
+
+            if (best.empty())
+                best = buf;
+        }
+        return best.empty() ? "127.0.0.1" : best;
+    }
 };
