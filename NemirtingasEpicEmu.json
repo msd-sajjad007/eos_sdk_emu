@@ -1,0 +1,14 @@
+{
+  "appid": "reanimal",
+  "gamename": "REANIMAL",
+  "username": "Player1",
+  "epicid": "",
+  "productuserid": "",
+  "language": "en",
+  "unlock_dlcs": true,
+  "enable_overlay": false,
+  "disable_online_networking": false,
+  "custom_broadcast": "",
+  "savepath": "appdata",
+  "log_level": "WARN"
+}

@@ -63,6 +63,13 @@ jobs:
         shell: pwsh
         run: cmake --install build/win64 --config Release
 
+      - name: Copy config and runtime DLLs
+        shell: pwsh
+        run: |
+          Copy-Item NemirtingasEpicEmu.json release/win64/ -Force
+          Copy-Item C:\vcpkg\installed\x64-windows\bin\libprotobuf.dll release/win64/ -Force -ErrorAction SilentlyContinue
+          Copy-Item C:\vcpkg\installed\x64-windows\bin\abseil_dll.dll  release/win64/ -Force -ErrorAction SilentlyContinue
+
       - name: Upload Windows x64
         uses: actions/upload-artifact@v4
         with:
