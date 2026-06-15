@@ -1,0 +1,139 @@
+name: Build
+
+
+on:
+  push:
+    branches: [ master, partyvan ]
+  pull_request:
+    branches: [ master, partyvan ]
+  workflow_dispatch:
+
+
+jobs:
+  build-win64:
+    name: Windows x64
+    runs-on: windows-2022
+
+
+    env:
+      VCPKG_TRIPLET: x64-windows
+      VCPKG_DISABLE_METRICS: 1
+
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          if (Test-Path ".\vcpkg\bootstrap-vcpkg.bat") {
+            Push-Location vcpkg
+            git fetch --unshallow 2>$null
+            git fetch origin 2>$null
+            .\bootstrap-vcpkg.bat -disableMetrics
+            Pop-Location
+          } else {
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+            Push-Location vcpkg
+            git checkout c82f74667287d3dc386bce81e44964370c91a289
+            .\bootstrap-vcpkg.bat -disableMetrics
+            Pop-Location
+          }
+
+      - name: Pre-download nlohmann-json tarball into vcpkg cache
+        shell: pwsh
+        run: |
+          $dest = "$env:LOCALAPPDATA\vcpkg\downloads"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $file = "$dest\nlohmann-json-v3.11.3.tar.gz"
+          if (-not (Test-Path $file)) {
+            Write-Host "Downloading nlohmann/json v3.11.3..."
+            Invoke-WebRequest `
+              -Uri "https://github.com/nlohmann/json/archive/v3.11.3.tar.gz" `
+              -OutFile $file `
+              -UseBasicParsing
+            Write-Host "Downloaded to $file"
+          } else {
+            Write-Host "Already cached: $file"
+          }
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        id: vcpkg-cache
+        with:
+          path: vcpkg_installed
+          key: vcpkg-win64-dynamic-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'overlay/**') }}
+
+
+      - name: Install dependencies
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          .\vcpkg\vcpkg.exe install `
+            --triplet $env:VCPKG_TRIPLET `
+            --overlay-ports="${{ github.workspace }}\overlay" `
+            --x-install-root="${{ github.workspace }}\vcpkg_installed" `
+            --no-print-usage
+
+      - name: Install Ninja
+        shell: cmd
+        run: choco install ninja -y --no-progress
+
+
+      - name: Configure CMake
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cmake -G Ninja ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DX64=ON ^
+            -DCMAKE_TOOLCHAIN_FILE="%GITHUB_WORKSPACE%/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
+            -DVCPKG_TARGET_TRIPLET=%VCPKG_TRIPLET% ^
+            -DVCPKG_HOST_TRIPLET=%VCPKG_TRIPLET% ^
+            -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%/vcpkg_installed" ^
+            -DVCPKG_OVERLAY_PORTS="%GITHUB_WORKSPACE%/overlay" ^
+            -B build-win64
+      - name: Build
+        shell: cmd
+        run: |
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cmake --build build-win64 --config Release
+      - name: Install
+        shell: cmd
+        run: cmake --install build-win64 --config Release
+
+      - name: Copy runtime DLLs into artifact folder
+        shell: pwsh
+        run: |
+          $vcpkg_bin = "${{ github.workspace }}\vcpkg_installed\x64-windows\bin"
+          $dest = "${{ github.workspace }}\release\win64"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          $dlls = @("abseil_dll.dll", "libprotobuf.dll", "libprotobuf-lite.dll")
+          foreach ($dll in $dlls) {
+            $src = Join-Path $vcpkg_bin $dll
+            if (Test-Path $src) {
+              Write-Host "Copying $dll"
+              Copy-Item $src $dest -Force
+            } else {
+              Write-Host "Not found (skipping): $dll"
+            }
+          }
+          Get-ChildItem "$vcpkg_bin\*.dll" | ForEach-Object {
+            $target = Join-Path $dest $_.Name
+            if (-not (Test-Path $target)) {
+              Write-Host "Copying extra: $($_.Name)"
+              Copy-Item $_.FullName $dest -Force
+            }
+          }
+          Write-Host "Final artifact contents:"
+          Get-ChildItem $dest | Select-Object Name, Length
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EOSSDK-Win64-Shipping
+          path: release/win64/
