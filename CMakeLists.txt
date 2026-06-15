@@ -118,6 +118,7 @@ option(USE_ZSTD_COMPRESS "Use zstd to compress network messages" OFF)
 set(Protobuf_USE_STATIC_LIBS ON)
 include(FindProtobuf)
 find_package(Protobuf CONFIG REQUIRED)
+find_package(absl CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 
 if(USE_ZSTD_COMPRESS)
@@ -182,12 +183,6 @@ if(UNIX)
   SET_TARGET_PROPERTIES(${EPIC_API} PROPERTIES PREFIX "")
 endif()
 
-# When using x64-windows-static vcpkg triplet, protobuf is built as a static
-# lib and it already pulls in all abseil static libs as INTERFACE link
-# dependencies via its CMake targets.  We must NOT link against the old
-# "abseil_dll" import target (that belongs to the dynamic triplet only).
-# protobuf::libprotobuf-lite transitively links every required absl::* target,
-# so no extra abseil entry is needed here at all.
 target_link_libraries(
   ${EPIC_API}
   protobuf::libprotobuf-lite
@@ -202,10 +197,67 @@ target_link_libraries(
   $<$<BOOL:${WIN32}>:shell32>
   $<$<BOOL:${WIN32}>:user32>
 
-  # NOTE: abseil_dll removed -- abseil is statically absorbed into
-  # protobuf::libprotobuf-lite when using x64-windows-static triplet.
-  # Keeping "abseil_dll" here would cause a link error because the
-  # static triplet does NOT produce an abseil_dll import target.
+  # Abseil static component libraries required by protobuf (replaces the old
+  # abseil_dll stub which is empty / missing with VCPKG_LIBRARY_LINKAGE=static
+  # and caused 77 LNK2019 unresolved externals on Windows builds).
+  $<$<BOOL:${WIN32}>:absl::cord>
+  $<$<BOOL:${WIN32}>:absl::cord_internal>
+  $<$<BOOL:${WIN32}>:absl::cordz_functions>
+  $<$<BOOL:${WIN32}>:absl::cordz_handle>
+  $<$<BOOL:${WIN32}>:absl::cordz_info>
+  $<$<BOOL:${WIN32}>:absl::cordz_sample_token>
+  $<$<BOOL:${WIN32}>:absl::crc32c>
+  $<$<BOOL:${WIN32}>:absl::crc_cord_state>
+  $<$<BOOL:${WIN32}>:absl::crc_internal>
+  $<$<BOOL:${WIN32}>:absl::str_format_internal>
+  $<$<BOOL:${WIN32}>:absl::strings>
+  $<$<BOOL:${WIN32}>:absl::strings_internal>
+  $<$<BOOL:${WIN32}>:absl::string_view>
+  $<$<BOOL:${WIN32}>:absl::base>
+  $<$<BOOL:${WIN32}>:absl::raw_logging_internal>
+  $<$<BOOL:${WIN32}>:absl::log_severity>
+  $<$<BOOL:${WIN32}>:absl::int128>
+  $<$<BOOL:${WIN32}>:absl::bits>
+  $<$<BOOL:${WIN32}>:absl::hash>
+  $<$<BOOL:${WIN32}>:absl::city>
+  $<$<BOOL:${WIN32}>:absl::bad_optional_access>
+  $<$<BOOL:${WIN32}>:absl::bad_variant_access>
+  $<$<BOOL:${WIN32}>:absl::status>
+  $<$<BOOL:${WIN32}>:absl::statusor>
+  $<$<BOOL:${WIN32}>:absl::strerror>
+  $<$<BOOL:${WIN32}>:absl::synchronization>
+  $<$<BOOL:${WIN32}>:absl::graphcycles_internal>
+  $<$<BOOL:${WIN32}>:absl::kernel_timeout_internal>
+  $<$<BOOL:${WIN32}>:absl::stacktrace>
+  $<$<BOOL:${WIN32}>:absl::symbolize>
+  $<$<BOOL:${WIN32}>:absl::debugging_internal>
+  $<$<BOOL:${WIN32}>:absl::demangle_internal>
+  $<$<BOOL:${WIN32}>:absl::malloc_internal>
+  $<$<BOOL:${WIN32}>:absl::time>
+  $<$<BOOL:${WIN32}>:absl::time_zone>
+  $<$<BOOL:${WIN32}>:absl::civil_time>
+  $<$<BOOL:${WIN32}>:absl::exponential_biased>
+  $<$<BOOL:${WIN32}>:absl::log_internal_check_op>
+  $<$<BOOL:${WIN32}>:absl::log_internal_conditions>
+  $<$<BOOL:${WIN32}>:absl::log_internal_format>
+  $<$<BOOL:${WIN32}>:absl::log_internal_globals>
+  $<$<BOOL:${WIN32}>:absl::log_internal_log_sink_set>
+  $<$<BOOL:${WIN32}>:absl::log_internal_message>
+  $<$<BOOL:${WIN32}>:absl::log_internal_nullguard>
+  $<$<BOOL:${WIN32}>:absl::log_internal_proto>
+  $<$<BOOL:${WIN32}>:absl::log_sink>
+  $<$<BOOL:${WIN32}>:absl::log_entry>
+  $<$<BOOL:${WIN32}>:absl::log_initialize>
+  $<$<BOOL:${WIN32}>:absl::log_globals>
+  $<$<BOOL:${WIN32}>:absl::vlog_config_internal>
+  $<$<BOOL:${WIN32}>:absl::flags_internal>
+  $<$<BOOL:${WIN32}>:absl::flags_reflection>
+  $<$<BOOL:${WIN32}>:absl::flags_private_handle_accessor>
+  $<$<BOOL:${WIN32}>:absl::flags_commandlineflag>
+  $<$<BOOL:${WIN32}>:absl::flags_commandlineflag_internal>
+  $<$<BOOL:${WIN32}>:absl::flags_config>
+  $<$<BOOL:${WIN32}>:absl::flags_marshalling>
+  $<$<BOOL:${WIN32}>:absl::flags_program_name>
 
   # For library .so/.dylib loading
   $<$<BOOL:${UNIX}>:dl>
