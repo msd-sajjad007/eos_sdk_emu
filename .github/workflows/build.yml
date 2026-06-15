@@ -13,7 +13,13 @@ jobs:
     runs-on: windows-2022
 
     env:
-      VCPKG_COMMIT: a34c873a9717a888f58dc05268dea15592c2f822
+      VCPKG_COMMIT: c82f74667287d3dc386bce81e44964370c91a289
+      VCPKG_TRIPLET: x64-windows-static
+      VCPKG_DISABLE_METRICS: 1
+      # Disables pkgconfig post-build fixup that tries to download MSYS2 packages
+      VCPKG_FEATURE_FLAGS: -binarycaching,-compilertracking
+      # Skips the pkgconfig acquisition entirely
+      VCPKG_KEEP_ENV_VARS: VCPKG_FEATURE_FLAGS
 
     steps:
       - name: Checkout (with submodules)
@@ -26,9 +32,9 @@ jobs:
         id: vcpkg-cache
         with:
           path: ${{ github.workspace }}\vcpkg_installed
-          key: vcpkg-x64-static-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-${{ env.VCPKG_TRIPLET }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
 
-      - name: Clone vcpkg at pinned commit
+      - name: Clone & bootstrap vcpkg
         shell: pwsh
         run: |
           git clone https://github.com/microsoft/vcpkg.git vcpkg
@@ -36,15 +42,20 @@ jobs:
           git checkout $env:VCPKG_COMMIT
           .\bootstrap-vcpkg.bat -disableMetrics
 
-      - name: Install vcpkg dependencies (manifest mode)
+      - name: Install vcpkg dependencies (classic mode, no version resolution)
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         shell: pwsh
-        env:
-          VCPKG_DISABLE_METRICS: 1
-          VCPKG_FEATURE_FLAGS: -binarycaching
         run: |
+          # Classic mode: pass packages explicitly, bypasses manifest/baseline entirely
+          # VCPKG_DISABLE_PKGCONFIG_FIXUP prevents the MSYS2 pkgconf download
+          $env:VCPKG_DISABLE_PKGCONFIG_FIXUP = "1"
+          $env:VCPKG_FEATURE_FLAGS = "-binarycaching,-compilertracking,-registries,-versions"
           .\vcpkg\vcpkg.exe install `
-            --triplet x64-windows-static `
+            protobuf:$env:VCPKG_TRIPLET `
+            abseil:$env:VCPKG_TRIPLET `
+            utf8-range:$env:VCPKG_TRIPLET `
+            nlohmann-json:$env:VCPKG_TRIPLET `
+            --classic `
             --x-install-root="${{ github.workspace }}\vcpkg_installed" `
             --no-print-usage
 
@@ -60,8 +71,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release ^
             -DX64=ON ^
             -DCMAKE_TOOLCHAIN_FILE="%GITHUB_WORKSPACE%/vcpkg/scripts/buildsystems/vcpkg.cmake" ^
-            -DVCPKG_TARGET_TRIPLET=x64-windows-static ^
-            -DVCPKG_HOST_TRIPLET=x64-windows-static ^
+            -DVCPKG_TARGET_TRIPLET=%VCPKG_TRIPLET% ^
+            -DVCPKG_HOST_TRIPLET=%VCPKG_TRIPLET% ^
             -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%/vcpkg_installed" ^
             -B build-win64
 
