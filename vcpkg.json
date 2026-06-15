@@ -1,0 +1,13 @@
+{
+  "name": "eos-sdk-emu",
+  "version": "1.0.0",
+  "dependencies": [
+    "protobuf",
+    {
+      "name": "abseil",
+      "features": ["cxx17"]
+    },
+    "utf8-range",
+    "nlohmann-json"
+  ]
+}
