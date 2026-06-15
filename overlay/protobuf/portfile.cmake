@@ -51,7 +51,7 @@ vcpkg_cmake_configure(
         -Dprotobuf_BUILD_PROTOC_BINARIES=${protobuf_BUILD_PROTOC_BINARIES}
         -Dprotobuf_BUILD_LIBPROTOC=${protobuf_BUILD_LIBPROTOC}
         -Dprotobuf_ABSL_PROVIDER=package
-        -Dprotobuf_FORCE_FETCH_DEPENDENCIES=OFF
+        -Dutf8_range_ENABLE_INSTALL=OFF
         ${FEATURE_OPTIONS}
 )
 
