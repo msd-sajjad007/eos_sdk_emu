@@ -22,11 +22,16 @@ jobs:
         run: choco install ninja -y --no-progress
         shell: cmd
 
-      - name: Install vcpkg dependencies (x64-windows-static)
+      - name: Debug - show vcpkg paths
         shell: cmd
         run: |
           echo VCPKG_INSTALLATION_ROOT=%VCPKG_INSTALLATION_ROOT%
-          %VCPKG_INSTALLATION_ROOT%\vcpkg.exe install protobuf abseil utf8-range nlohmann-json --triplet x64-windows-static --no-print-usage
+          dir C:\vcpkg\vcpkg.exe 2>nul && echo C:\vcpkg\vcpkg.exe EXISTS || echo C:\vcpkg\vcpkg.exe NOT FOUND
+
+      - name: Install vcpkg dependencies into C:\vcpkg
+        shell: cmd
+        run: |
+          C:\vcpkg\vcpkg.exe install protobuf abseil utf8-range nlohmann-json --triplet x64-windows-static --no-print-usage
 
       - name: Configure CMake (x64)
         shell: cmd
@@ -35,7 +40,7 @@ jobs:
           cmake -G Ninja ^
             -DCMAKE_BUILD_TYPE=Release ^
             -DX64=ON ^
-            -DCMAKE_TOOLCHAIN_FILE=%VCPKG_INSTALLATION_ROOT%/scripts/buildsystems/vcpkg.cmake ^
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake ^
             -DVCPKG_TARGET_TRIPLET=x64-windows-static ^
             -B build-win64
 
