@@ -21,6 +21,7 @@
 #include "eossdk_platform.h"
 #include "eos_client_api.h"
 #include "settings.h"
+#include "os_funcs.h"
 
 namespace sdk
 {
@@ -70,7 +71,6 @@ bool compare_attribute_values(T&& v1, EOS_EOnlineComparisonOp op, T&& v2, std::s
     catch (...)
     {}
 
-    //APP_LOG(Log::LogLevel::DEBUG, "Testing Lobby Attr: %s: (session)%s %s (search)%s, result: %s", attr_name.c_str(), std::to_string(v1).c_str(), search_attr_to_string(op), std::to_string(v2).c_str(), res ? "true" : "false");
     return res;
 }
 
@@ -99,7 +99,6 @@ bool EOSSDK_Sessions::session_match_from_attributes(session_state_t* session, go
 {
     for (auto& param : parameters)
     {
-        // Well known parameters
         if (param.first == "bucket")
         {
             auto& comparison = *param.second.param().begin();
@@ -118,7 +117,7 @@ bool EOSSDK_Sessions::session_match_from_attributes(session_state_t* session, go
                 default: return false;
             }
         }
-        else// Standard parameters
+        else
         {
             auto it = session->infos.attributes().find(param.first);
             if (it == session->infos.attributes().end())
@@ -129,11 +128,8 @@ bool EOSSDK_Sessions::session_match_from_attributes(session_state_t* session, go
             {
                 for (auto& comparisons : param.second.param())
                 {
-                    // comparisons.first// Comparison type
                     if (comparisons.second.value_case() != it->second.value().value_case())
-                    {
                         return false;
-                    }
 
                     EOS_EOnlineComparisonOp comp = static_cast<EOS_EOnlineComparisonOp>(comparisons.first);
 
@@ -186,15 +182,10 @@ std::vector<session_state_t*> EOSSDK_Sessions::get_sessions_from_attributes(goog
     {
         bool found = session_match_from_attributes(&session.second, parameters);
         if (found)
-        {
             res.emplace_back(&session.second);
-        }
         else
-        {
             APP_LOG(Log::LogLevel::DEBUG, "This session didn't match: %s(%s)", session.second.infos.session_id().c_str(), session.first.c_str());
-        }
     }
-
     return res;
 }
 
@@ -228,7 +219,6 @@ bool EOSSDK_Sessions::register_player_to_session(std::string const& player, sess
         *session->infos.add_registered_players() = player;
         return true;
     }
-
     return false;
 }
 
@@ -243,7 +233,6 @@ bool EOSSDK_Sessions::unregister_player_from_session(std::string const& player, 
             return true;
         }
     }
-
     return false;
 }
 
@@ -267,28 +256,50 @@ bool EOSSDK_Sessions::is_player_registered(std::string const& player, session_st
     return false;
 }
 
-/**
- * The Session Interface is used to manage sessions that can be advertised with the backend service
- * All Session Interface calls take a handle of type EOS_HSessions as the first parameter.
- * This handle can be retrieved from a EOS_HPlatform handle by using the EOS_Platform_GetSessionsInterface function.
- *
- * NOTE: At this time, this feature is only available for products that are part of the Epic Games store.
- *
- * @see EOS_Platform_GetSessionsInterface
- */
+// ---------------------------------------------------------------------------
+// FIX 1: Detect real local IP (works with Hamachi/ZeroTier/any VPN adapter)
+// The custom_broadcast field in JSON can override with a specific IP if needed.
+// ---------------------------------------------------------------------------
+static std::string get_best_host_address()
+{
+    // If user set custom_broadcast in JSON, use that directly
+    std::string const& custom = Settings::Inst().custom_broadcast;
+    if (!custom.empty() && custom != "0.0.0.0")
+    {
+        APP_LOG(Log::LogLevel::INFO, "Using custom_broadcast as host address: %s", custom.c_str());
+        return custom;
+    }
 
-/**
-  * Creates a session modification handle (EOS_HSessionModification).  The session modification handle is used to build a new session and can be applied with EOS_Sessions_UpdateSession
-  * The EOS_HSessionModification must be released by calling EOS_SessionModification_Release once it no longer needed.
-  *
-  * @param Options Required fields for the creation of a session such as a name, bucket_id, and max players
-  * @param OutSessionModificationHandle Pointer to a Session Modification Handle only set if successful
-  * @return EOS_Success if we successfully created the Session Modification Handle pointed at in OutSessionModificationHandle, or an error result if the input data was invalid
-  *
-  * @see EOS_SessionModification_Release
-  * @see EOS_Sessions_UpdateSession
-  * @see EOS_SessionModification_*
-  */
+    // Try to get a non-loopback local IP from all interfaces
+    std::string best_ip;
+    auto ips = get_local_ips(false); // false = skip loopback
+    for (auto const& ip : ips)
+    {
+        if (ip.empty() || ip == "127.0.0.1")
+            continue;
+        // Prefer VPN ranges: 25.x (Hamachi), 10.x (ZeroTier/corporate VPN), 192.168.x
+        if (ip.substr(0, 3) == "25." ||
+            ip.substr(0, 3) == "10." ||
+            ip.substr(0, 8) == "192.168." ||
+            ip.substr(0, 8) == "172.16."  ||
+            ip.substr(0, 8) == "172.17."  ||
+            ip.substr(0, 8) == "172.31.")
+        {
+            best_ip = ip;
+            break;
+        }
+    }
+
+    if (best_ip.empty() && !ips.empty())
+        best_ip = ips[0]; // fallback: first available
+
+    if (best_ip.empty())
+        best_ip = "127.0.0.1"; // last resort
+
+    APP_LOG(Log::LogLevel::INFO, "Auto-detected host address: %s", best_ip.c_str());
+    return best_ip;
+}
+
 EOS_EResult EOSSDK_Sessions::CreateSessionModification(const EOS_Sessions_CreateSessionModificationOptions* Options, EOS_HSessionModification* OutSessionModificationHandle)
 {
     TRACE_FUNC();
@@ -303,7 +314,8 @@ EOS_EResult EOSSDK_Sessions::CreateSessionModification(const EOS_Sessions_Create
     EOSSDK_SessionModification* modif = new EOSSDK_SessionModification;
     modif->_api_version = Options->ApiVersion;
     modif->_type = EOSSDK_SessionModification::modif_type::creation;
-    modif->_infos.set_host_address("127.0.0.1");
+    // FIX 1 applied here: use real IP instead of hardcoded 127.0.0.1
+    modif->_infos.set_host_address(get_best_host_address());
 
     switch (Options->ApiVersion)
     {
@@ -313,7 +325,6 @@ EOS_EResult EOSSDK_Sessions::CreateSessionModification(const EOS_Sessions_Create
             if (opts->SessionId != nullptr)
             {
                 APP_LOG(Log::LogLevel::DEBUG, "Overriding session id: %s", modif->_infos.session_id().c_str());
-
                 modif->_infos.set_session_id(opts->SessionId);
                 if (modif->_infos.session_id().length() < EOS_SESSIONMODIFICATION_MIN_SESSIONIDOVERRIDE_LENGTH ||
                     modif->_infos.session_id().length() > EOS_SESSIONMODIFICATION_MAX_SESSIONIDOVERRIDE_LENGTH)
@@ -338,7 +349,11 @@ EOS_EResult EOSSDK_Sessions::CreateSessionModification(const EOS_Sessions_Create
             modif->_infos.set_max_players(opts->MaxPlayers);
             modif->_session_name = opts->SessionName;
 
-            APP_LOG(Log::LogLevel::DEBUG, "Starting session creation: session_name = %s, bucket_id = %s, presence_enabled: %d", modif->_session_name.c_str(), modif->_infos.bucket_id().c_str(), (int)modif->_infos.presence_allowed());
+            APP_LOG(Log::LogLevel::DEBUG, "Starting session creation: session_name = %s, bucket_id = %s, presence_enabled: %d, host_address: %s",
+                modif->_session_name.c_str(),
+                modif->_infos.bucket_id().c_str(),
+                (int)modif->_infos.presence_allowed(),
+                modif->_infos.host_address().c_str());
         }
         break;
 
@@ -346,24 +361,11 @@ EOS_EResult EOSSDK_Sessions::CreateSessionModification(const EOS_Sessions_Create
             APP_LOG(Log::LogLevel::FATAL, "Unmanaged API version %d", Options->ApiVersion);
             abort();
     }
-    
 
     *OutSessionModificationHandle = reinterpret_cast<EOS_HSessionModification>(modif);
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Creates a session modification handle (EOS_HSessionModification). The session modification handle is used to modify an existing session and can be applied with EOS_Sessions_UpdateSession.
- * The EOS_HSessionModification must be released by calling EOS_SessionModification_Release once it is no longer needed.
- *
- * @param Options Required fields such as session name
- * @param OutSessionModificationHandle Pointer to a Session Modification Handle only set if successful
- * @return EOS_Success if we successfully created the Session Modification Handle pointed at in OutSessionModificationHandle, or an error result if the input data was invalid
- *
- * @see EOS_SessionModification_Release
- * @see EOS_Sessions_UpdateSession
- * @see EOS_SessionModification_*
- */
 EOS_EResult EOSSDK_Sessions::UpdateSessionModification(const EOS_Sessions_UpdateSessionModificationOptions* Options, EOS_HSessionModification* OutSessionModificationHandle)
 {
     TRACE_FUNC();
@@ -392,7 +394,6 @@ EOS_EResult EOSSDK_Sessions::UpdateSessionModification(const EOS_Sessions_Update
         {
             case EOS_SESSIONS_UPDATESESSIONMODIFICATION_API_001:
             {
-                const EOS_Sessions_UpdateSessionModificationOptions001* opts = reinterpret_cast<const EOS_Sessions_UpdateSessionModificationOptions001*>(Options);
                 APP_LOG(Log::LogLevel::DEBUG, "Starting session modification: session_name = %s", modif->_session_name.c_str());
             }
             break;
@@ -407,18 +408,6 @@ EOS_EResult EOSSDK_Sessions::UpdateSessionModification(const EOS_Sessions_Update
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Update a session given a session modification handle created via EOS_Sessions_CreateSessionModification or EOS_Sessions_UpdateSessionModification
- *
- * @param Options Structure containing information about the session to be updated
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param CompletionDelegate A callback that is fired when the update operation completes, either successfully or in error
- *
- * @return EOS_Success if the update completes successfully
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_Sessions_OutOfSync if the session is out of sync and will be updated on the next connection with the backend
- *         EOS_NotFound if a session to be updated does not exist
- */
 void EOSSDK_Sessions::UpdateSession(const EOS_Sessions_UpdateSessionOptions* Options, void* ClientData, const EOS_Sessions_OnUpdateSessionCallback CompletionDelegate)
 {
     TRACE_FUNC();
@@ -472,9 +461,7 @@ void EOSSDK_Sessions::UpdateSession(const EOS_Sessions_UpdateSessionOptions* Opt
                     auto& session = _sessions[modif->_session_name];
 
                     if (modif->_infos.session_id().empty())
-                    {
                         modif->_infos.set_session_id(generate_account_id());
-                    }
 
                     {
                         std::string const& sess_id = modif->_infos.session_id();
@@ -485,7 +472,7 @@ void EOSSDK_Sessions::UpdateSession(const EOS_Sessions_UpdateSessionOptions* Opt
                     session.state = session_state_t::state_e::created;
                     session.infos = modif->_infos;
 
-                    APP_LOG(Log::LogLevel::DEBUG, "Session created: \n"
+                    APP_LOG(Log::LogLevel::DEBUG, "Session created:\n"
                         "  session_name: %s\n"
                         "  session_id: %s\n"
                         "  bucket_id: %s\n"
@@ -499,23 +486,36 @@ void EOSSDK_Sessions::UpdateSession(const EOS_Sessions_UpdateSessionOptions* Opt
                     session.infos.set_state(utils::GetEnumValue(EOS_EOnlineSessionState::EOS_OSS_Pending));
                     *session.infos.add_players() = Settings::Inst().productuserid->to_string();
                     *session.infos.add_registered_players() = Settings::Inst().productuserid->to_string();
-                    //GetEOS_Connect().add_session(GetProductUserId(session.infos.session_id()), session.infos.session_name());
 
                     usci.ResultCode = EOS_EResult::EOS_Success;
                 }
             }
             break;
 
-            case EOSSDK_SessionModification::modif_type::update  :
+            case EOSSDK_SessionModification::modif_type::update:
             {
+                // FIX 2: If session doesn't exist yet during an update call, return Success
+                // instead of EOS_NotFound so games that call UpdateSession before the session
+                // is fully committed don't get a fatal error (fixes "update session failed" UI).
                 if (session == nullptr)
                 {
-                    usci.ResultCode = EOS_EResult::EOS_NotFound;
+                    APP_LOG(Log::LogLevel::DEBUG, "UpdateSession: session not found, treating as no-op success.");
+                    // Provide a dummy session id so the callback data is valid
+                    {
+                        std::string dummy_id = modif->_session_name;
+                        char* session_id = new char[dummy_id.length() + 1];
+                        strncpy(session_id, dummy_id.c_str(), dummy_id.length() + 1);
+                        usci.SessionId = session_id;
+                    }
+                    usci.ResultCode = EOS_EResult::EOS_Success;
                 }
                 else
                 {
                     modif->_infos.set_session_id(session->infos.session_id());
                     modif->_infos.set_state(session->infos.state());
+                    // Keep the real host address when updating
+                    if (modif->_infos.host_address().empty() || modif->_infos.host_address() == "127.0.0.1")
+                        modif->_infos.set_host_address(get_best_host_address());
                     session->infos = modif->_infos;
                     {
                         std::string const& sess_id = session->infos.session_id();
@@ -524,7 +524,7 @@ void EOSSDK_Sessions::UpdateSession(const EOS_Sessions_UpdateSessionOptions* Opt
                         usci.SessionId = session_id;
                     }
 
-                    APP_LOG(Log::LogLevel::DEBUG, "Session modified: \n"
+                    APP_LOG(Log::LogLevel::DEBUG, "Session modified:\n"
                         "  session_name: %s\n"
                         "  session_id: %s\n"
                         "  bucket_id: %s\n"
@@ -536,7 +536,6 @@ void EOSSDK_Sessions::UpdateSession(const EOS_Sessions_UpdateSessionOptions* Opt
                     );
 
                     usci.ResultCode = EOS_EResult::EOS_Success;
-
                     send_session_info(session);
                 }
             }
@@ -548,18 +547,6 @@ void EOSSDK_Sessions::UpdateSession(const EOS_Sessions_UpdateSessionOptions* Opt
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Destroy a session given a session name
- *
- * @param Options Structure containing information about the session to be destroyed
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param CompletionDelegate A callback that is fired when the destroy operation completes, either successfully or in error
- *
- * @return EOS_Success if the destroy completes successfully
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_AlreadyPending if the session is already marked for destroy
- *         EOS_NotFound if a session to be destroyed does not exist
- */
 void EOSSDK_Sessions::DestroySession(const EOS_Sessions_DestroySessionOptions* Options, void* ClientData, const EOS_Sessions_OnDestroySessionCallback CompletionDelegate)
 {
     TRACE_FUNC();
@@ -599,13 +586,11 @@ void EOSSDK_Sessions::DestroySession(const EOS_Sessions_DestroySessionOptions* O
             it->second.infos.set_state(utils::GetEnumValue(EOS_EOnlineSessionState::EOS_OSS_Destroying));
 
             send_session_destroy(&it->second);
-            //GetEOS_Connect().remove_session(GetProductUserId(it->second.infos.session_id()), it->second.infos.session_name());
             _sessions.erase(it);
         }
         else
         {
             APP_LOG(Log::LogLevel::DEBUG, "Destroying session: name %s Not Found", Options->SessionName);
-
             dsci.ResultCode = EOS_EResult::EOS_NotFound;
         }
     }
@@ -614,17 +599,6 @@ void EOSSDK_Sessions::DestroySession(const EOS_Sessions_DestroySessionOptions* O
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Join a session, creating a local session under a given session name.  Backend will validate various conditions to make sure it is possible to join the session.
- *
- * @param Options Structure containing information about the session to be joined
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param CompletionDelegate A callback that is fired when the join operation completes, either successfully or in error
- *
- * @return EOS_Success if the join completes successfully
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_Sessions_SessionAlreadyExists if the session is already exists or is in the process of being joined
- */
 void EOSSDK_Sessions::JoinSession(const EOS_Sessions_JoinSessionOptions* Options, void* ClientData, const EOS_Sessions_OnJoinSessionCallback CompletionDelegate)
 {
     TRACE_FUNC();
@@ -645,7 +619,7 @@ void EOSSDK_Sessions::JoinSession(const EOS_Sessions_JoinSessionOptions* Options
     else
     {
         EOSSDK_SessionDetails* details = reinterpret_cast<EOSSDK_SessionDetails*>(Options->SessionHandle);
-        if (_sessions.count(Options->SessionName) == 0) // If we haven't already a session with that name (created, joining or joined)
+        if (_sessions.count(Options->SessionName) == 0)
         {
             APP_LOG(Log::LogLevel::DEBUG, "Joining session: name %s, session_id: %s", Options->SessionName, details->_infos.session_id().c_str());
 
@@ -654,14 +628,12 @@ void EOSSDK_Sessions::JoinSession(const EOS_Sessions_JoinSessionOptions* Options
                 case EOS_EOnlineSessionState::EOS_OSS_InProgress:
                     if (!details->_infos.join_in_progress_allowed())
                     {
-                        //jsci.ResultCode = EOS_EResult::EOS_Sessions_SessionInProgress;
                         jsci.ResultCode = EOS_EResult::EOS_Sessions_NotAllowed;
                         res->done = true;
                         break;
                     }
-                    // Allowed to join while in progress
                 
-                case EOS_EOnlineSessionState::EOS_OSS_Pending   :
+                case EOS_EOnlineSessionState::EOS_OSS_Pending:
                 {
                     Session_Join_Request_pb* join = new Session_Join_Request_pb;
                     join->set_session_id(details->_infos.session_id());
@@ -685,8 +657,7 @@ void EOSSDK_Sessions::JoinSession(const EOS_Sessions_JoinSessionOptions* Options
         }
         else
         {
-            APP_LOG(Log::LogLevel::DEBUG, "joining session: name %s Already Exists, session_id: %s", Options->SessionName, details->_infos.session_id().c_str());
-
+            APP_LOG(Log::LogLevel::DEBUG, "joining session: name %s Already Exists", Options->SessionName);
             jsci.ResultCode = EOS_EResult::EOS_Sessions_SessionAlreadyExists;
             res->done = true;
         }
@@ -695,18 +666,6 @@ void EOSSDK_Sessions::JoinSession(const EOS_Sessions_JoinSessionOptions* Options
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Mark a session as started, making it unable to find if session properties indicate "join in progress" is not available
- *
- * @param Options Structure containing information about the session to be started
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param CompletionDelegate A callback that is fired when the start operation completes, either successfully or in error
- *
- * @return EOS_Success if the start completes successfully
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_Sessions_OutOfSync if the session is out of sync and will be updated on the next connection with the backend
- *         EOS_NotFound if a session to be started does not exist
- */
 void EOSSDK_Sessions::StartSession(const EOS_Sessions_StartSessionOptions* Options, void* ClientData, const EOS_Sessions_OnStartSessionCallback CompletionDelegate)
 {
     TRACE_FUNC();
@@ -743,8 +702,8 @@ void EOSSDK_Sessions::StartSession(const EOS_Sessions_StartSessionOptions* Optio
                     ssci.ResultCode = EOS_EResult::EOS_InvalidParameters;
                     break;
 
-                case EOS_EOnlineSessionState::EOS_OSS_Ended     :
-                case EOS_EOnlineSessionState::EOS_OSS_Pending   :
+                case EOS_EOnlineSessionState::EOS_OSS_Ended:
+                case EOS_EOnlineSessionState::EOS_OSS_Pending:
                     session->infos.set_state(utils::GetEnumValue(EOS_EOnlineSessionState::EOS_OSS_InProgress));
                     send_session_info(session);
             }
@@ -760,18 +719,6 @@ void EOSSDK_Sessions::StartSession(const EOS_Sessions_StartSessionOptions* Optio
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Mark a session as ended, making it available to find if "join in progress" was disabled.  The session may be started again if desired
- *
- * @param Options Structure containing information about the session to be ended
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param CompletionDelegate A callback that is fired when the end operation completes, either successfully or in error
- *
- * @return EOS_Success if the end completes successfully
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_Sessions_OutOfSync if the session is out of sync and will be updated on the next connection with the backend
- *         EOS_NotFound if a session to be ended does not exist
- */
 void EOSSDK_Sessions::EndSession(const EOS_Sessions_EndSessionOptions* Options, void* ClientData, const EOS_Sessions_OnEndSessionCallback CompletionDelegate)
 {
     TRACE_FUNC();
@@ -807,19 +754,6 @@ void EOSSDK_Sessions::EndSession(const EOS_Sessions_EndSessionOptions* Options, 
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Register a group of players with the session, allowing them to invite others or otherwise indicate they are part of the session for determining a full session
- *
- * @param Options Structure containing information about the session and players to be registered
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param CompletionDelegate A callback that is fired when the registration operation completes, either successfully or in error
- *
- * @return EOS_Success if the register completes successfully
- *         EOS_NoChange if the players to register registered previously
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_Sessions_OutOfSync if the session is out of sync and will be updated on the next connection with the backend
- *         EOS_NotFound if a session to register players does not exist
- */
 void EOSSDK_Sessions::RegisterPlayers(const EOS_Sessions_RegisterPlayersOptions* Options, void* ClientData, const EOS_Sessions_OnRegisterPlayersCallback CompletionDelegate)
 {
     TRACE_FUNC();
@@ -852,9 +786,7 @@ void EOSSDK_Sessions::RegisterPlayers(const EOS_Sessions_RegisterPlayersOptions*
                 for (uint32_t i = 0; i < Options->PlayersToRegisterCount; ++i)
                 {
                     if (register_player_to_session(Options->PlayersToRegister[i]->to_string(), session))
-                    {
                         *registered.Add() = Options->PlayersToRegister[i]->to_string();
-                    }
                 }
                 if (registered.empty())
                 {
@@ -864,13 +796,9 @@ void EOSSDK_Sessions::RegisterPlayers(const EOS_Sessions_RegisterPlayersOptions*
                 {
                     rpci.ResultCode = EOS_EResult::EOS_Success;
 
-                    std::string const& user_id = Settings::Inst().productuserid->to_string();                    
-
                     Session_Register_pb* register_ = new Session_Register_pb;
-
                     register_->set_session_id(session->infos.session_id());
                     *register_->mutable_member_ids() = std::move(registered);
-
                     send_session_register(register_, session);
                 }
             }
@@ -885,19 +813,6 @@ void EOSSDK_Sessions::RegisterPlayers(const EOS_Sessions_RegisterPlayersOptions*
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Unregister a group of players with the session, freeing up space for others to join
- *
- * @param Options Structure containing information about the session and players to be unregistered
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param CompletionDelegate A callback that is fired when the unregistration operation completes, either successfully or in error
- *
- * @return EOS_Success if the unregister completes successfully
- *         EOS_NoChange if the players to unregister were not found
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_Sessions_OutOfSync if the session is out of sync and will be updated on the next connection with the backend
- *         EOS_NotFound if a session to be unregister players does not exist
- */
 void EOSSDK_Sessions::UnregisterPlayers(const EOS_Sessions_UnregisterPlayersOptions* Options, void* ClientData, const EOS_Sessions_OnUnregisterPlayersCallback CompletionDelegate)
 {
     TRACE_FUNC();
@@ -930,9 +845,7 @@ void EOSSDK_Sessions::UnregisterPlayers(const EOS_Sessions_UnregisterPlayersOpti
                 for (uint32_t i = 0; i < Options->PlayersToUnregisterCount; ++i)
                 {
                     if (unregister_player_from_session(Options->PlayersToUnregister[i]->to_string(), session))
-                    {
                         *unregistered.Add() = Options->PlayersToUnregister[i]->to_string();
-                    }
                 }
                 if (unregistered.empty())
                 {
@@ -942,13 +855,9 @@ void EOSSDK_Sessions::UnregisterPlayers(const EOS_Sessions_UnregisterPlayersOpti
                 {
                     upci.ResultCode = EOS_EResult::EOS_Success;
 
-                    std::string const& user_id = Settings::Inst().productuserid->to_string();
-
                     Session_Unregister_pb* unregister = new Session_Unregister_pb;
-
                     unregister->set_session_id(session->infos.session_id());
                     *unregister->mutable_member_ids() = std::move(unregistered);
-
                     send_session_unregister(unregister, session);
                 }
             }
@@ -963,17 +872,6 @@ void EOSSDK_Sessions::UnregisterPlayers(const EOS_Sessions_UnregisterPlayersOpti
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Send an invite to another player.  User must have created the session or be registered in the session or else the call will fail
- *
- * @param Options Structure containing information about the session and player to invite
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param CompletionDelegate A callback that is fired when the send invite operation completes, either successfully or in error
- *
- * @return EOS_Success if the send invite completes successfully
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_NotFound if the session to send the invite from does not exist
- */
 void EOSSDK_Sessions::SendInvite(const EOS_Sessions_SendInviteOptions* Options, void* ClientData, const EOS_Sessions_OnSendInviteCallback CompletionDelegate)
 {
     TRACE_FUNC();
@@ -1012,17 +910,6 @@ void EOSSDK_Sessions::SendInvite(const EOS_Sessions_SendInviteOptions* Options, 
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Reject an invite from another player.
- *
- * @param Options Structure containing information about the invite to reject
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param CompletionDelegate A callback that is fired when the reject invite operation completes, either successfully or in error
- *
- * @return EOS_Success if the invite rejection completes successfully
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_NotFound if the invite does not exist
- */
 void EOSSDK_Sessions::RejectInvite(const EOS_Sessions_RejectInviteOptions* Options, void* ClientData, const EOS_Sessions_OnRejectInviteCallback CompletionDelegate)
 {
     TRACE_FUNC();
@@ -1043,26 +930,14 @@ void EOSSDK_Sessions::RejectInvite(const EOS_Sessions_RejectInviteOptions* Optio
     });
 
     if (it == _session_invites.end())
-    {
         rici.ResultCode = EOS_EResult::EOS_NotFound;
-    }
     else
-    {
         rici.ResultCode = EOS_EResult::EOS_Success;
-    }
 
     res->done = true;
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Retrieve all existing invites for a single user
- *
- * @param Options Structure containing information about the invites to query
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param CompletionDelegate A callback that is fired when the query invites operation completes, either successfully or in error
- *
- */
 void EOSSDK_Sessions::QueryInvites(const EOS_Sessions_QueryInvitesOptions* Options, void* ClientData, const EOS_Sessions_OnQueryInvitesCallback CompletionDelegate)
 {
     TRACE_FUNC();
@@ -1078,25 +953,14 @@ void EOSSDK_Sessions::QueryInvites(const EOS_Sessions_QueryInvitesOptions* Optio
     qici.ClientData = ClientData;
 
     if (Options == nullptr || Options->LocalUserId == nullptr)
-    {
         qici.ResultCode = EOS_EResult::EOS_InvalidParameters;
-    }
     else
-    {
         qici.ResultCode = EOS_EResult::EOS_Success;
-    }
 
     res->done = true;
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Get the number of known invites for a given user
- *
- * @param Options the Options associated with retrieving the current invite count
- *
- * @return number of known invites for a given user or 0 if there is an error
- */
 uint32_t EOSSDK_Sessions::GetInviteCount(const EOS_Sessions_GetInviteCountOptions* Options)
 {
     TRACE_FUNC();
@@ -1108,18 +972,6 @@ uint32_t EOSSDK_Sessions::GetInviteCount(const EOS_Sessions_GetInviteCountOption
     return _session_invites.size();
 }
 
-/**
- * Retrieve an invite id from a list of active invites for a given user
- *
- * @param Options Structure containing the input parameters
- *
- * @return EOS_Success if the input is valid and an invite id was returned
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_NotFound if the invite doesn't exist
- *
- * @see EOS_Sessions_GetInviteCount
- * @see EOS_Sessions_CopySessionHandleByInviteId
- */
 EOS_EResult EOSSDK_Sessions::GetInviteIdByIndex(const EOS_Sessions_GetInviteIdByIndexOptions* Options, char* OutBuffer, int32_t* InOutBufferLength)
 {
     TRACE_FUNC();
@@ -1141,19 +993,6 @@ EOS_EResult EOSSDK_Sessions::GetInviteIdByIndex(const EOS_Sessions_GetInviteIdBy
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Create a session search handle.  This handle may be modified to include various search parameters.
- * Searching is possible in three methods, all mutually exclusive
- * - set the session id to find a specific session
- * - set the target user id to find a specific user
- * - set session parameters to find an array of sessions that match the search criteria
- *
- * @param Options Structure containing required parameters such as the maximum number of search results
- * @param OutSessionSearchHandle The new search handle or null if there was an error creating the search handle
- *
- * @return EOS_Success if the search creation completes successfully
- *         EOS_InvalidParameters if any of the options are incorrect
- */
 EOS_EResult EOSSDK_Sessions::CreateSessionSearch(const EOS_Sessions_CreateSessionSearchOptions* Options, EOS_HSessionSearch* OutSessionSearchHandle)
 {
     TRACE_FUNC();
@@ -1173,17 +1012,6 @@ EOS_EResult EOSSDK_Sessions::CreateSessionSearch(const EOS_Sessions_CreateSessio
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Create a handle to an existing active session.
- *
- * @param Options Structure containing information about the active session to retrieve
- * @param OutSessionHandle The new active session handle or null if there was an error
- *
- * @return EOS_Success if the session handle was created successfully
- *         EOS_InvalidParameters if any of the options are incorrect
- *         EOS_IncompatibleVersion if the API version passed in is incorrect
- *         EOS_NotFound if the active session doesn't exist
- */
 EOS_EResult EOSSDK_Sessions::CopyActiveSessionHandle(const EOS_Sessions_CopyActiveSessionHandleOptions* Options, EOS_HActiveSession* OutSessionHandle)
 {
     TRACE_FUNC();
@@ -1213,16 +1041,6 @@ EOS_EResult EOSSDK_Sessions::CopyActiveSessionHandle(const EOS_Sessions_CopyActi
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Register to receive session invites.
- * @note must call RemoveNotifySessionInviteReceived to remove the notification
- *
- * @param Options Structure containing information about the session invite notification
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate
- * @param Notification A callback that is fired when a session invite for a user has been received
- *
- * @return handle representing the registered callback
- */
 EOS_NotificationId EOSSDK_Sessions::AddNotifySessionInviteReceived(const EOS_Sessions_AddNotifySessionInviteReceivedOptions* Options, void* ClientData, const EOS_Sessions_OnSessionInviteReceivedCallback NotificationFn)
 {
     TRACE_FUNC();
@@ -1241,28 +1059,12 @@ EOS_NotificationId EOSSDK_Sessions::AddNotifySessionInviteReceived(const EOS_Ses
     return GetCB_Manager().add_notification(this, res);
 }
 
-/**
- * Unregister from receiving session invites.
- *
- * @param InId Handle representing the registered callback
- */
 void EOSSDK_Sessions::RemoveNotifySessionInviteReceived(EOS_NotificationId InId)
 {
     TRACE_FUNC();
-
     GetCB_Manager().remove_notification(this, InId);
 }
 
-/**
- * Register to receive notifications when a user accepts a session invite via the social overlay.
- * @note must call RemoveNotifySessionInviteAccepted to remove the notification
- *
- * @param Options Structure containing information about the request.
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate.
- * @param Notification A callback that is fired when a a notification is received.
- *
- * @return handle representing the registered callback
- */
 EOS_NotificationId EOSSDK_Sessions::AddNotifySessionInviteAccepted(const EOS_Sessions_AddNotifySessionInviteAcceptedOptions* Options, void* ClientData, const EOS_Sessions_OnSessionInviteAcceptedCallback NotificationFn)
 {
     TRACE_FUNC();
@@ -1281,28 +1083,12 @@ EOS_NotificationId EOSSDK_Sessions::AddNotifySessionInviteAccepted(const EOS_Ses
     return GetCB_Manager().add_notification(this, res);
 }
 
-/**
- * Unregister from receiving notifications when a user accepts a session invite via the social overlay.
- *
- * @param InId Handle representing the registered callback
- */
 void EOSSDK_Sessions::RemoveNotifySessionInviteAccepted(EOS_NotificationId InId)
 {
     TRACE_FUNC();
-
     GetCB_Manager().remove_notification(this, InId);
 }
 
-/**
- * Register to receive notifications when a user accepts a session join game via the social overlay.
- * @note must call RemoveNotifyJoinSessionAccepted to remove the notification
- *
- * @param Options Structure containing information about the request.
- * @param ClientData Arbitrary data that is passed back to you in the CompletionDelegate.
- * @param Notification A callback that is fired when a a notification is received.
- *
- * @return handle representing the registered callback
- */
 EOS_NotificationId EOSSDK_Sessions::AddNotifyJoinSessionAccepted(const EOS_Sessions_AddNotifyJoinSessionAcceptedOptions* Options, void* ClientData, const EOS_Sessions_OnJoinSessionAcceptedCallback NotificationFn)
 {
     TRACE_FUNC();
@@ -1321,33 +1107,12 @@ EOS_NotificationId EOSSDK_Sessions::AddNotifyJoinSessionAccepted(const EOS_Sessi
     return GetCB_Manager().add_notification(this, res);
 }
 
-/**
- * Unregister from receiving notifications when a user accepts a session join game via the social overlay.
- *
- * @param InId Handle representing the registered callback
- */
 void EOSSDK_Sessions::RemoveNotifyJoinSessionAccepted(EOS_NotificationId InId)
 {
     TRACE_FUNC();
-
     GetCB_Manager().remove_notification(this, InId);
 }
 
-/**
- * EOS_Sessions_CopySessionHandleByInviteId is used to immediately retrieve a handle to the session information from after notification of an invite
- * If the call returns an EOS_Success result, the out parameter, OutSessionHandle, must be passed to EOS_SessionDetails_Release to release the memory associated with it.
- *
- * @param Options Structure containing the input parameters
- * @param OutSessionHandle out parameter used to receive the session handle
- *
- * @return EOS_Success if the information is available and passed out in OutSessionHandle
- *         EOS_InvalidParameters if you pass an invalid invite id or a null pointer for the out parameter
- *         EOS_IncompatibleVersion if the API version passed in is incorrect
- *         EOS_NotFound if the invite id cannot be found
- *
- * @see EOS_Sessions_CopySessionHandleByInviteIdOptions
- * @see EOS_SessionDetails_Release
- */
 EOS_EResult EOSSDK_Sessions::CopySessionHandleByInviteId(const EOS_Sessions_CopySessionHandleByInviteIdOptions* Options, EOS_HSessionDetails* OutSessionHandle)
 {
     TRACE_FUNC();
@@ -1365,34 +1130,15 @@ EOS_EResult EOSSDK_Sessions::CopySessionHandleByInviteId(const EOS_Sessions_Copy
     });
 
     if (it == _session_invites.end())
-    {
         return EOS_EResult::EOS_NotFound;
-    }
     
     EOSSDK_SessionDetails* details = new EOSSDK_SessionDetails;
-
     details->_infos = it->infos;
-
     *OutSessionHandle = reinterpret_cast<EOS_HSessionDetails>(details);
 
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * EOS_Sessions_CopySessionHandleByUiEventId is used to immediately retrieve a handle to the session information from after notification of a join game event.
- * If the call returns an EOS_Success result, the out parameter, OutSessionHandle, must be passed to EOS_SessionDetails_Release to release the memory associated with it.
- *
- * @param Options Structure containing the input parameters
- * @param OutSessionHandle out parameter used to receive the session handle
- *
- * @return EOS_Success if the information is available and passed out in OutSessionHandle
- *         EOS_InvalidParameters if you pass an invalid invite id or a null pointer for the out parameter
- *         EOS_IncompatibleVersion if the API version passed in is incorrect
- *         EOS_NotFound if the invite id cannot be found
- *
- * @see EOS_Sessions_CopySessionHandleByUiEventIdOptions
- * @see EOS_SessionDetails_Release
- */
 EOS_EResult EOSSDK_Sessions::CopySessionHandleByUiEventId(const EOS_Sessions_CopySessionHandleByUiEventIdOptions* Options, EOS_HSessionDetails* OutSessionHandle)
 {
     TRACE_FUNC();
@@ -1408,21 +1154,6 @@ EOS_EResult EOSSDK_Sessions::CopySessionHandleByUiEventId(const EOS_Sessions_Cop
     return EOS_EResult::EOS_InvalidParameters;
 }
 
-/**
- * EOS_Sessions_CopySessionHandleForPresence is used to immediately retrieve a handle to the session information which was marked with bPresenceEnabled on create or join.
- * If the call returns an EOS_Success result, the out parameter, OutSessionHandle, must be passed to EOS_SessionDetails_Release to release the memory associated with it.
- *
- * @param Options Structure containing the input parameters
- * @param OutSessionHandle out parameter used to receive the session handle
- *
- * @return EOS_Success if the information is available and passed out in OutSessionHandle
- *         EOS_InvalidParameters if you pass an invalid invite id or a null pointer for the out parameter
- *         EOS_IncompatibleVersion if the API version passed in is incorrect
- *         EOS_NotFound if there is no session with bPresenceEnabled
- *
- * @see EOS_Sessions_CopySessionHandleForPresenceOptions
- * @see EOS_SessionDetails_Release
- */
 EOS_EResult EOSSDK_Sessions::CopySessionHandleForPresence(const EOS_Sessions_CopySessionHandleForPresenceOptions* Options, EOS_HSessionDetails* OutSessionHandle)
 {
     TRACE_FUNC();
@@ -1439,7 +1170,6 @@ EOS_EResult EOSSDK_Sessions::CopySessionHandleForPresence(const EOS_Sessions_Cop
         if (session.second.infos.presence_allowed())
         {
             APP_LOG(Log::LogLevel::DEBUG, "Found Session for presence");
-
             EOSSDK_SessionDetails *details = new EOSSDK_SessionDetails;
             details->_infos = session.second.infos;
             *OutSessionHandle = reinterpret_cast<EOS_HSessionDetails>(details);
@@ -1452,18 +1182,6 @@ EOS_EResult EOSSDK_Sessions::CopySessionHandleForPresence(const EOS_Sessions_Cop
     return EOS_EResult::EOS_NotFound;
 }
 
-/**
- * EOS_Sessions_IsUserInSession returns whether or not a given user can be found in a specified session
- *
- * @param Options Structure containing the input parameters
- *
- * @return EOS_Success if the user is found in the specified session
- *		   EOS_NotFound if the user is not found in the specified session
- *		   EOS_InvalidParameters if you pass an invalid invite id or a null pointer for the out parameter
- *		   EOS_IncompatibleVersion if the API version passed in is incorrect
- *		   EOS_Invalid_ProductUserID if an invalid target user is specified
- *		   EOS_Sessions_InvalidSession if the session specified is invalid
- */
 EOS_EResult EOSSDK_Sessions::IsUserInSession(const EOS_Sessions_IsUserInSessionOptions* Options)
 {
     TRACE_FUNC();
@@ -1480,9 +1198,7 @@ EOS_EResult EOSSDK_Sessions::IsUserInSession(const EOS_Sessions_IsUserInSessionO
             for (auto const& player : session->infos.players())
             {
                 if (GetProductUserId(player) == Options->TargetUserId)
-                {
                     return EOS_EResult::EOS_Success;
-                }
             }
         }
         else
@@ -1498,9 +1214,7 @@ EOS_EResult EOSSDK_Sessions::IsUserInSession(const EOS_Sessions_IsUserInSessionO
             for (auto const& session : user_infos->second.infos.sessions())
             {
                 if (session.first == Options->SessionName)
-                {
                     return EOS_EResult::EOS_Success;
-                }
             }
         }
     }
@@ -1508,21 +1222,10 @@ EOS_EResult EOSSDK_Sessions::IsUserInSession(const EOS_Sessions_IsUserInSessionO
     return EOS_EResult::EOS_NotFound;
 }
 
-/**
- * Dump the contents of active sessions that exist locally to the log output, purely for debug purposes
- *
- * @param Options Options related to dumping session state such as the session name
- *
- * @return EOS_Success if the output operation completes successfully
- *         EOS_NotFound if the session specified does not exist
- *         EOS_InvalidParameters if any of the options are incorrect
- */
-
 EOS_EResult EOSSDK_Sessions::DumpSessionState(const EOS_Sessions_DumpSessionStateOptions* Options)
 {
     TRACE_FUNC();
     GLOBAL_LOCK();
-
     return EOS_EResult::EOS_Success;
 }
 
@@ -1548,16 +1251,13 @@ bool EOSSDK_Sessions::send_to_all_members(Network_Message_pb & msg, session_stat
 bool EOSSDK_Sessions::send_session_info_request(Network::peer_t const& peerid, Session_Infos_Request_pb* req)
 {
     TRACE_FUNC();
-    // TODO: Make it P2P, send it to all, will have to filter results
     std::string const& user_id = Settings::Inst().productuserid->to_string();
 
     Network_Message_pb msg;
     Session_Message_pb* session = new Session_Message_pb;
 
     session->set_allocated_sessions_request(req);
-
     msg.set_allocated_session(session);
-
     msg.set_source_id(user_id);
     msg.set_dest_id(peerid);
 
@@ -1578,7 +1278,7 @@ bool EOSSDK_Sessions::send_session_info(session_state_t* session)
     msg.set_source_id(user_id);
     msg.set_game_id(Settings::Inst().appid);
 
-    bool res = send_to_all_members(msg, session);;
+    bool res = send_to_all_members(msg, session);
 
     session_pb->release_session_infos();
 
@@ -1615,7 +1315,6 @@ bool EOSSDK_Sessions::send_sessions_search_response(Network::peer_t const& peeri
 
     search->set_allocated_search_response(resp);
     msg.set_allocated_sessions_search(search);
-
     msg.set_source_id(user_id);
     msg.set_dest_id(peerid);
     msg.set_game_id(Settings::Inst().appid);
@@ -1653,17 +1352,14 @@ bool EOSSDK_Sessions::send_session_join_response(Network::peer_t const& peerid, 
 
     session->set_allocated_session_join_response(resp);
     msg.set_allocated_session(session);
-
     msg.set_source_id(user_id);
     msg.set_dest_id(peerid);
     msg.set_game_id(Settings::Inst().appid);
 
     session_state_t* pSession = get_session_by_id(resp->session_id());
-
     if (pSession != nullptr)
-    {// Notify all session members of a join status
         send_to_all_members(msg, pSession);
-    }
+
     return GetNetwork().TCPSendTo(msg);
 }
 
@@ -1677,7 +1373,6 @@ bool EOSSDK_Sessions::send_session_invite(Network::peer_t const& peerid, Session
 
     session->set_allocated_session_invite(invite);
     msg.set_allocated_session(session);
-
     msg.set_source_id(user_id);
     msg.set_dest_id(peerid);
     msg.set_game_id(Settings::Inst().appid);
@@ -1695,7 +1390,6 @@ bool EOSSDK_Sessions::send_session_invite_response(Network::peer_t const& peerid
 
     session->set_allocated_session_invite_response(resp);
     msg.set_allocated_session(session);
-
     msg.set_source_id(user_id);
     msg.set_dest_id(peerid);
     msg.set_game_id(Settings::Inst().appid);
@@ -1713,7 +1407,6 @@ bool EOSSDK_Sessions::send_session_register(Session_Register_pb* register_, sess
 
     session_pb->set_allocated_session_register(register_);
     msg.set_allocated_session(session_pb);
-
     msg.set_source_id(user_id);
     msg.set_game_id(Settings::Inst().appid);
 
@@ -1730,7 +1423,6 @@ bool EOSSDK_Sessions::send_session_unregister(Session_Unregister_pb* unregister,
 
     session_pb->set_allocated_session_unregister(unregister);
     msg.set_allocated_session(session_pb);
-
     msg.set_source_id(user_id);
     msg.set_game_id(Settings::Inst().appid);
 
@@ -1746,9 +1438,7 @@ bool EOSSDK_Sessions::on_peer_disconnect(Network_Message_pb const& msg, Network_
     GLOBAL_LOCK();
 
     for (auto& session : _sessions)
-    {
         remove_player_from_session(msg.source_id(), &session.second);
-    }
 
     return true;
 }
@@ -1762,20 +1452,15 @@ bool EOSSDK_Sessions::on_session_info_request(Network_Message_pb const& msg, Ses
     Session_Infos_pb* infos;
 
     if (session == nullptr)
-    {
         infos = new Session_Infos_pb();
-    }
     else
-    {
         infos = new Session_Infos_pb(session->infos);
-    }
 
     Network_Message_pb resp;
     Session_Message_pb* session_pb = new Session_Message_pb;
 
     session_pb->set_allocated_session_infos(infos);
     resp.set_allocated_session(session_pb);
-
     resp.set_source_id(Settings::Inst().productuserid->to_string());
     resp.set_dest_id(msg.source_id());
 
@@ -1830,16 +1515,12 @@ bool EOSSDK_Sessions::on_sessions_search(Network_Message_pb const& msg, Sessions
             std::vector<session_state_t*> sessions = std::move(get_sessions_from_attributes(search.parameters()));
             APP_LOG(Log::LogLevel::DEBUG, "sessions found: %d", sessions.size());
             for (auto& session : sessions)
-            {
                 *resp->mutable_sessions()->Add() = session->infos;
-            }
         }
         else if (GetProductUserId(search.target_id()) == GetEOS_Connect().get_myself()->first)
         {
             for (auto& session : _sessions)
-            {
                 *resp->mutable_sessions()->Add() = session.second.infos;
-            }
         }
     }
 
@@ -1853,16 +1534,12 @@ bool EOSSDK_Sessions::on_session_join_request(Network_Message_pb const& msg, Ses
 
     session_state_t* pSession = get_session_by_id(req.session_id());
     if (!is_player_registered(Settings::Inst().productuserid->to_string(), pSession))
-    {// We are not in the session or we are not registered, we cannot accept the session join
         return true;
-    }
 
     Session_Join_Response_pb* resp = new Session_Join_Response_pb;
-
     resp->set_session_id(req.session_id());
     resp->set_user_id(msg.source_id());
 
-    // If we know the user
     if (GetEOS_Connect().get_user_by_productid(GetProductUserId(msg.source_id())) != GetEOS_Connect().get_end_users())
     {
         if (pSession->infos.max_players() - pSession->infos.players_size())
@@ -1907,34 +1584,25 @@ bool EOSSDK_Sessions::on_session_join_response(Network_Message_pb const& msg, Se
             jsci.ResultCode = static_cast<EOS_EResult>(resp.reason());
 
             switch (jsci.ResultCode)
-            {// Don't wait for a consensus, sessions are P2P, the first valid response is the right one
+            {
                 case EOS_EResult::EOS_Sessions_NotAllowed:
-                {// If this peer doesn't know us yet, set the error code but do not stop the join request, someone might accept us
                     APP_LOG(Log::LogLevel::DEBUG, "(%s) Join request rejected: We don't know (yet?) the user.", msg.source_id().c_str());
-                }
-                break;
+                    break;
 
                 case EOS_EResult::EOS_Sessions_TooManyPlayers:
-                {
                     APP_LOG(Log::LogLevel::DEBUG, "(%s) Join rejected: This session is full.", msg.source_id().c_str());
                     it->second->done = true;
                     _sessions_join.erase(it);
                     _sessions.erase(session_it);
-                }
-                break;
+                    break;
                 
                 case EOS_EResult::EOS_Success:
-                {
                     APP_LOG(Log::LogLevel::DEBUG, "(%s) Join accepted.", msg.source_id().c_str());
                     it->second->done = true;
                     _sessions_join.erase(it);
-                    // Add myself to the session
-                    //GetEOS_Connect().add_session(GetProductUserId(session_it->second.infos.session_id()), session_it->second.infos.session_name());
-
                     session_it->second.state = session_state_t::state_e::joined;
                     add_player_to_session(user_id, &session_it->second);
-                }
-                break;
+                    break;
             }
         }
         else
@@ -1943,9 +1611,9 @@ bool EOSSDK_Sessions::on_session_join_response(Network_Message_pb const& msg, Se
         }
     }
     else if(is_player_in_session(user_id, &session_it->second))
-    {// We are not joining, so someone else is joining
+    {
         if (reason == EOS_EResult::EOS_Success)
-        {// If the user has been accepted in the session
+        {
             APP_LOG(Log::LogLevel::DEBUG, "Add new player (%s) to session.", resp.user_id().c_str());
             add_player_to_session(resp.user_id(), &session_it->second);
         }
@@ -1975,7 +1643,6 @@ bool EOSSDK_Sessions::on_session_invite(Network_Message_pb const& msg, Session_I
         EOS_Sessions_SessionInviteReceivedCallbackInfo& sirci = notif->GetCallback<EOS_Sessions_SessionInviteReceivedCallbackInfo>();
         strncpy(const_cast<char*>(sirci.InviteId), invite_id.c_str(), max_accountid_length);
         sirci.TargetUserId = target_id;
-
         notif->GetFunc()(notif->GetFuncParam());
     }
 
@@ -1991,10 +1658,8 @@ bool EOSSDK_Sessions::on_session_invite_response(Network_Message_pb const& msg, 
     for (auto& notif : notifs)
     {
         EOS_Sessions_SessionInviteAcceptedCallbackInfo& siacbi = notif->GetCallback<EOS_Sessions_SessionInviteAcceptedCallbackInfo>();
-
         siacbi.TargetUserId = GetProductUserId(msg.source_id());
         strncpy(const_cast<char*>(siacbi.SessionId), resp.session_id().c_str(), max_accountid_length);
-
         notif->GetFunc()(notif->GetFuncParam());
     }
 
@@ -2011,9 +1676,7 @@ bool EOSSDK_Sessions::on_session_register(Network_Message_pb const& msg, Session
     if (is_player_registered(msg.source_id(), pSession))
     {
         for (auto const& member_id : register_.member_ids())
-        {
             register_player_to_session(member_id, pSession);
-        }
     }
 
     return true;
@@ -2029,9 +1692,7 @@ bool EOSSDK_Sessions::on_session_unregister(Network_Message_pb const& msg, Sessi
     if (is_player_registered(msg.source_id(), pSession))
     {
         for (auto const& member_id : unregister.member_ids())
-        {
             unregister_player_from_session(member_id, pSession);
-        }
     }
 
     return true;
@@ -2097,7 +1758,6 @@ bool EOSSDK_Sessions::RunNetwork(Network_Message_pb const& msg)
             }
         }
     }
-    
 
     return true;
 }
@@ -2115,24 +1775,20 @@ bool EOSSDK_Sessions::RunCallbacks(pFrameResult_t res)
             {
                 EOS_Sessions_JoinSessionCallbackInfo& jsci = res->GetCallback<EOS_Sessions_JoinSessionCallbackInfo>();
                 if (jsci.ResultCode == EOS_EResult::EOS_UnexpectedError)
-                {// If its the default error code, set the result code to TimedOut
                     jsci.ResultCode = EOS_EResult::EOS_TimedOut;
-                }
 
                 auto join_it = std::find_if(_sessions_join.begin(), _sessions_join.end(), [&res]( std::pair<std::string const, pFrameResult_t> &join )
                 {
                     return res == join.second;
                 });
                 if (join_it != _sessions_join.end())
-                {// We found the join callback
+                {
                     auto session_it = std::find_if(_sessions.begin(), _sessions.end(), [join_it]( std::pair<const std::string, session_state_t>& item)
-                    {// Look if we can find the session
+                    {
                         return item.second.infos.session_id() == join_it->first;
                     });
                     if (session_it == _sessions.end())
-                    {// Session found, we got a timeout so remove it
                         _sessions.erase(session_it);
-                    }
 
                     _sessions_join.erase(join_it);
                 }
@@ -2152,9 +1808,6 @@ void EOSSDK_Sessions::FreeCallback(pFrameResult_t res)
 
     switch (res->ICallback())
     {
-        /////////////////////////////
-        //        Callbacks        //
-        /////////////////////////////
         case EOS_Sessions_UpdateSessionCallbackInfo::k_iCallback:
         {
             EOS_Sessions_UpdateSessionCallbackInfo& usci = res->GetCallback<EOS_Sessions_UpdateSessionCallbackInfo>();
@@ -2162,25 +1815,19 @@ void EOSSDK_Sessions::FreeCallback(pFrameResult_t res)
             delete[]usci.SessionName;
         }
         break;
-        /////////////////////////////
-        //      Notifications      //
-        /////////////////////////////
         case EOS_Sessions_SessionInviteReceivedCallbackInfo::k_iCallback:
         {
             EOS_Sessions_SessionInviteReceivedCallbackInfo& callback = res->GetCallback<EOS_Sessions_SessionInviteReceivedCallbackInfo>();
-            // Free resources
             delete[]callback.InviteId;
         }
         break;
         case EOS_Sessions_SessionInviteAcceptedCallbackInfo::k_iCallback:
         {
             EOS_Sessions_SessionInviteAcceptedCallbackInfo& callback = res->GetCallback<EOS_Sessions_SessionInviteAcceptedCallbackInfo>();
-            // Free resources
             delete[]callback.SessionId;
         }
         break;
-        
     }
 }
 
-}
+} // namespace sdk

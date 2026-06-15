@@ -12,11 +12,8 @@ env:
 
 jobs:
 
-  # ----------------------------------------
-  # Windows x64
-  # ----------------------------------------
   build-windows-x64:
-    name: "Windows x64"
+    name: "Windows x64 (single DLL)"
     runs-on: windows-2022
 
     steps:
@@ -31,13 +28,13 @@ jobs:
           git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
 
-      - name: Install vcpkg deps (x64)
+      - name: Install vcpkg deps (x64) -- STATIC so no extra DLLs needed
         shell: pwsh
         run: |
           C:\vcpkg\vcpkg.exe install `
-            protobuf:x64-windows `
-            nlohmann-json:x64-windows `
-            nlohmann-fifo-map:x64-windows `
+            protobuf:x64-windows-static `
+            nlohmann-json:x64-windows-static `
+            nlohmann-fifo-map:x64-windows-static `
             --no-binarycaching
 
       - name: Setup MSVC x64
@@ -45,14 +42,16 @@ jobs:
         with:
           arch: amd64
 
-      - name: Configure CMake (x64)
+      - name: Configure CMake (x64, static runtime + static vcpkg)
         shell: pwsh
         run: |
           cmake -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DX64=ON `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DVCPKG_TARGET_TRIPLET=x64-windows-static `
             -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake `
+            -DVCPKG_CRT_LINKAGE=static `
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
             -S . -B build/win64
 
       - name: Build (x64)
@@ -63,14 +62,17 @@ jobs:
         shell: pwsh
         run: cmake --install build/win64 --config Release
 
-      - name: Copy config and runtime DLLs
+      - name: Copy config JSON into artifact folder
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force release/win64 | Out-Null
           Copy-Item NemirtingasEpicEmu.json release/win64/ -Force
-          Copy-Item C:\vcpkg\installed\x64-windows\bin\libprotobuf.dll release/win64/ -Force -ErrorAction SilentlyContinue
-          Copy-Item C:\vcpkg\installed\x64-windows\bin\abseil_dll.dll  release/win64/ -Force -ErrorAction SilentlyContinue
 
-      - name: Upload Windows x64
+      - name: List artifact contents (verify single DLL)
+        shell: pwsh
+        run: Get-ChildItem release/win64/
+
+      - name: Upload Windows x64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: EOSSDK-Win64-Shipping
