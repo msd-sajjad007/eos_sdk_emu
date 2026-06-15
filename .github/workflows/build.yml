@@ -25,20 +25,18 @@ jobs:
       - name: Bootstrap vcpkg
         shell: pwsh
         run: |
-          # Use the vcpkg submodule if present, otherwise clone a known-good commit
           if (Test-Path ".\vcpkg\bootstrap-vcpkg.bat") {
-            cd vcpkg
-            # Fetch full history so baseline.json is reachable in git objects
-            git fetch --unshallow 2>$null; git fetch origin 2>$null
+            Push-Location vcpkg
+            git fetch --unshallow 2>$null
+            git fetch origin 2>$null
             .\bootstrap-vcpkg.bat -disableMetrics
-            cd ..
+            Pop-Location
           } else {
             git clone https://github.com/microsoft/vcpkg.git vcpkg
-            cd vcpkg
-            # c82f746 is a recent commit that has versions/baseline.json
+            Push-Location vcpkg
             git checkout c82f74667287d3dc386bce81e44964370c91a289
             .\bootstrap-vcpkg.bat -disableMetrics
-            cd ..
+            Pop-Location
           }
 
       - name: Cache vcpkg packages
@@ -46,22 +44,22 @@ jobs:
         id: vcpkg-cache
         with:
           path: vcpkg_installed
-          key: vcpkg-win64-static-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          key: vcpkg-win64-static-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'overlay/**') }}
 
       - name: Install dependencies
         if: steps.vcpkg-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          # Manifest mode: reads vcpkg.json, uses builtin-baseline for version resolution
-          # No --classic flag needed or supported
+          # --overlay-ports points to our patched abseil that skips vcpkg_fixup_pkgconfig
           .\vcpkg\vcpkg.exe install `
             --triplet $env:VCPKG_TRIPLET `
+            --overlay-ports="${{ github.workspace }}\overlay" `
             --x-install-root="${{ github.workspace }}\vcpkg_installed" `
             --no-print-usage
 
       - name: Install Ninja
-        run: choco install ninja -y --no-progress
         shell: cmd
+        run: choco install ninja -y --no-progress
 
       - name: Configure CMake
         shell: cmd
@@ -74,6 +72,7 @@ jobs:
             -DVCPKG_TARGET_TRIPLET=%VCPKG_TRIPLET% ^
             -DVCPKG_HOST_TRIPLET=%VCPKG_TRIPLET% ^
             -DVCPKG_INSTALLED_DIR="%GITHUB_WORKSPACE%/vcpkg_installed" ^
+            -DVCPKG_OVERLAY_PORTS="%GITHUB_WORKSPACE%/overlay" ^
             -B build-win64
 
       - name: Build

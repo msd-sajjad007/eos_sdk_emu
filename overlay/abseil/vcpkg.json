@@ -1,0 +1,22 @@
+{
+  "name": "abseil",
+  "version-date": "20240722.0",
+  "description": "Open-source collection of C++ library code designed to augment the C++ standard library (overlay: pkgconfig disabled)",
+  "homepage": "https://github.com/abseil/abseil-cpp",
+  "license": "Apache-2.0",
+  "features": {
+    "cxx17": {
+      "description": "Enables C++17 features"
+    }
+  },
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}
