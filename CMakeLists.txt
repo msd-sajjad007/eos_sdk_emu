@@ -104,6 +104,7 @@ include(FindProtobuf)
 find_package(Protobuf CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 find_package(absl CONFIG REQUIRED)
+find_package(utf8_range CONFIG QUIET)
 
 if(USE_ZSTD_COMPRESS)
   find_package(zstd CONFIG REQUIRED)
@@ -163,20 +164,62 @@ if(UNIX)
   SET_TARGET_PROPERTIES(${EPIC_API} PROPERTIES PREFIX "")
 endif()
 
+# utf8_range targets — provided by protobuf's own install tree (our shim is empty).
+# Guard with TARGET checks so this works whether or not the shim exported anything.
+set(_UTF8_RANGE_LIBS "")
+if(TARGET utf8_range::utf8_range)
+  list(APPEND _UTF8_RANGE_LIBS utf8_range::utf8_range)
+endif()
+if(TARGET utf8_range::utf8_validity)
+  list(APPEND _UTF8_RANGE_LIBS utf8_range::utf8_validity)
+endif()
+
 target_link_libraries(
   ${EPIC_API}
-  protobuf::libprotobuf-lite
+  # Full protobuf (not lite) so all reflection / descriptor symbols resolve.
+  # The imported target carries transitive absl + utf8_range deps automatically
+  # when linking against the DLL triplet; for the static triplet we also add
+  # the individual absl targets below.
+  protobuf::libprotobuf
+  ${_UTF8_RANGE_LIBS}
   Threads::Threads
   $<$<BOOL:${USE_ZSTD_COMPRESS}>:libzstd>
 
-  # abseil: use correct static targets (not abseil_dll which is dynamic-only)
+  # abseil — list every component that protobuf 4.25.x pulls in so the
+  # static build resolves all symbols without relying on INTERFACE deps.
   absl::base
   absl::strings
+  absl::str_format
   absl::synchronization
   absl::status
   absl::statusor
   absl::flat_hash_map
   absl::flat_hash_set
+  absl::log
+  absl::log_internal_check_op
+  absl::log_internal_conditions
+  absl::log_internal_message
+  absl::log_internal_nullguard
+  absl::log_initialize
+  absl::log_globals
+  absl::log_sink
+  absl::log_sink_registry
+  absl::log_entry
+  absl::log_severity
+  absl::raw_logging_internal
+  absl::spinlock_wait
+  absl::malloc_internal
+  absl::time
+  absl::time_zone
+  absl::int128
+  absl::cord
+  absl::cord_internal
+  absl::crc32c
+  absl::crc_cord_state
+  absl::hash
+  absl::city
+  absl::bad_optional_access
+  absl::bad_variant_access
 
   # Windows system libs
   $<$<BOOL:${WIN32}>:ws2_32>
