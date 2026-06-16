@@ -26,6 +26,7 @@ enum { k_iP2PCallbackBase = 9000 };
 #define EOS_P2P_GetPortRangeOptions                       EOS_P2P_GetPortRangeOptions001
 #define EOS_P2P_SetPacketQueueSizeOptions                 EOS_P2P_SetPacketQueueSizeOptions001
 #define EOS_P2P_GetPacketQueueInfoOptions                 EOS_P2P_GetPacketQueueInfoOptions001
+#define EOS_P2P_PacketQueueInfo                           EOS_P2P_PacketQueueInfo001
 #define EOS_P2P_AddNotifyIncomingPacketQueueFullOptions   EOS_P2P_AddNotifyIncomingPacketQueueFullOptions001
 #define EOS_P2P_ClearPacketQueueOptions                   EOS_P2P_ClearPacketQueueOptions001
 
