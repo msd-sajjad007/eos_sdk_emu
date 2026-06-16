@@ -13,8 +13,8 @@ enum { k_iP2PCallbackBase = 9000 };
 #define EOS_P2P_ReceivePacketOptions                      EOS_P2P_ReceivePacketOptions002
 #define EOS_P2P_AddNotifyPeerConnectionRequestOptions     EOS_P2P_AddNotifyPeerConnectionRequestOptions001
 #define EOS_P2P_AddNotifyPeerConnectionClosedOptions      EOS_P2P_AddNotifyPeerConnectionClosedOptions001
-#define EOS_P2P_AddNotifyPeerConnectionEstablishedOptions  EOS_P2P_AddNotifyPeerConnectionEstablishedOptions001
-#define EOS_P2P_AddNotifyPeerConnectionInterruptedOptions  EOS_P2P_AddNotifyPeerConnectionInterruptedOptions001
+#define EOS_P2P_AddNotifyPeerConnectionEstablishedOptions EOS_P2P_AddNotifyPeerConnectionEstablishedOptions001
+#define EOS_P2P_AddNotifyPeerConnectionInterruptedOptions EOS_P2P_AddNotifyPeerConnectionInterruptedOptions001
 #define EOS_P2P_AcceptConnectionOptions                   EOS_P2P_AcceptConnectionOptions001
 #define EOS_P2P_CloseConnectionOptions                    EOS_P2P_CloseConnectionOptions001
 #define EOS_P2P_CloseConnectionsOptions                   EOS_P2P_CloseConnectionsOptions001
@@ -27,7 +27,6 @@ enum { k_iP2PCallbackBase = 9000 };
 #define EOS_P2P_SetPacketQueueSizeOptions                 EOS_P2P_SetPacketQueueSizeOptions001
 #define EOS_P2P_GetPacketQueueInfoOptions                 EOS_P2P_GetPacketQueueInfoOptions001
 #define EOS_P2P_AddNotifyIncomingPacketQueueFullOptions   EOS_P2P_AddNotifyIncomingPacketQueueFullOptions001
-#define EOS_P2P_AddNotifyPeerConnectionEstablishedOptions EOS_P2P_AddNotifyPeerConnectionEstablishedOptions001
 #define EOS_P2P_ClearPacketQueueOptions                   EOS_P2P_ClearPacketQueueOptions001
 
 
