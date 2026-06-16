@@ -63,6 +63,11 @@ namespace sdk
         uint16_t _p2p_port;
         uint16_t _max_additional_ports_to_try;
 
+        // SDK 1.13+ packet queue management members
+        uint64_t _packet_queue_size_bytes;
+        uint64_t _packet_queue_used_bytes;
+        uint64_t _packet_queue_dropped_packets;
+
     public:
         EOSSDK_P2P();
         ~EOSSDK_P2P();
@@ -95,7 +100,7 @@ namespace sdk
         EOS_EResult        ReceivePacket(const EOS_P2P_ReceivePacketOptions* Options, EOS_ProductUserId* OutPeerId, EOS_P2P_SocketId* OutSocketId, uint8_t* OutChannel, void* OutData, uint32_t* OutBytesWritten);
         EOS_NotificationId AddNotifyPeerConnectionRequest(const EOS_P2P_AddNotifyPeerConnectionRequestOptions* Options, void* ClientData, EOS_P2P_OnIncomingConnectionRequestCallback ConnectionRequestHandler);
         void               RemoveNotifyPeerConnectionRequest(EOS_NotificationId NotificationId);
-        EOS_NotificationId               AddNotifyPeerConnectionEstablished(const EOS_P2P_AddNotifyPeerConnectionEstablishedOptions* Options, void* ClientData, EOS_P2P_OnPeerConnectionEstablishedCallback ConnectionEstablishedHandler);
+        EOS_NotificationId AddNotifyPeerConnectionEstablished(const EOS_P2P_AddNotifyPeerConnectionEstablishedOptions* Options, void* ClientData, EOS_P2P_OnPeerConnectionEstablishedCallback ConnectionEstablishedHandler);
         void               RemoveNotifyPeerConnectionEstablished(EOS_NotificationId NotificationId);
         EOS_NotificationId AddNotifyPeerConnectionInterrupted(const EOS_P2P_AddNotifyPeerConnectionInterruptedOptions* Options, void* ClientData, EOS_P2P_OnPeerConnectionInterruptedCallback ConnectionInterruptedHandler);
         void               RemoveNotifyPeerConnectionInterrupted(EOS_NotificationId NotificationId);
@@ -110,5 +115,10 @@ namespace sdk
         EOS_EResult        GetRelayControl(const EOS_P2P_GetRelayControlOptions* Options, EOS_ERelayControl* OutRelayControl);
         EOS_EResult        SetPortRange(const EOS_P2P_SetPortRangeOptions* Options);
         EOS_EResult        GetPortRange(const EOS_P2P_GetPortRangeOptions* Options, uint16_t* OutPort, uint16_t* OutNumAdditionalPortsToTry);
+        // SDK 1.13+ packet queue management
+        EOS_EResult        SetPacketQueueSize(const EOS_P2P_SetPacketQueueSizeOptions* Options);
+        EOS_EResult        GetPacketQueueInfo(const EOS_P2P_GetPacketQueueInfoOptions* Options, EOS_P2P_PacketQueueInfo* OutPacketQueueInfo);
+        EOS_NotificationId AddNotifyIncomingPacketQueueFull(const EOS_P2P_AddNotifyIncomingPacketQueueFullOptions* Options, void* ClientData, EOS_P2P_OnIncomingPacketQueueFullCallback PacketQueueFullHandler);
+        void               RemoveNotifyIncomingPacketQueueFull(EOS_NotificationId NotificationId);
     };
 }
