@@ -20,6 +20,10 @@
 #pragma once
 
 #include "common_includes.h"
+// eos_p2p_types.h is NOT pulled in transitively through common_includes.h;
+// we need it explicitly so that EOS_P2P_PacketQueueInfo and friends are
+// visible when the compiler processes this header.
+#include "eos_p2p_types.h"
 #include "callback_manager.h"
 #include "network.h"
 
@@ -63,10 +67,10 @@ namespace sdk
         uint16_t _p2p_port;
         uint16_t _max_additional_ports_to_try;
 
-        // Packet queue management (added for API parity with SDK 1.13+)
-        uint64_t _packet_queue_size_bytes;           // max inbound queue bytes
-        uint64_t _packet_queue_used_bytes;           // current inbound queue usage
-        uint64_t _packet_queue_dropped_packets;      // total dropped packet count
+        // Packet queue management (SDK 1.13+)
+        uint64_t _packet_queue_size_bytes;
+        uint64_t _packet_queue_used_bytes;
+        uint64_t _packet_queue_dropped_packets;
 
     public:
         EOSSDK_P2P();
@@ -116,7 +120,7 @@ namespace sdk
         EOS_EResult        SetPortRange(const EOS_P2P_SetPortRangeOptions* Options);
         EOS_EResult        GetPortRange(const EOS_P2P_GetPortRangeOptions* Options, uint16_t* OutPort, uint16_t* OutNumAdditionalPortsToTry);
 
-        // --- New API surface (SDK 1.13+) ---
+        // SDK 1.13+ Packet Queue Management
         EOS_EResult        SetPacketQueueSize(const EOS_P2P_SetPacketQueueSizeOptions* Options);
         EOS_EResult        GetPacketQueueInfo(const EOS_P2P_GetPacketQueueInfoOptions* Options, EOS_P2P_PacketQueueInfo* OutPacketQueueInfo);
         EOS_NotificationId AddNotifyIncomingPacketQueueFull(const EOS_P2P_AddNotifyIncomingPacketQueueFullOptions* Options, void* ClientData, EOS_P2P_OnIncomingPacketQueueFullCallback PacketQueueFullHandler);
