@@ -200,3 +200,43 @@ EOS_DECLARE_FUNC(EOS_EResult) EOS_P2P_GetPortRange(EOS_HP2P Handle, const EOS_P2
     auto pInst = reinterpret_cast<EOSSDK_P2P*>(Handle);
     return pInst->GetPortRange(Options, OutPort, OutNumAdditionalPortsToTry);
 }
+
+// ---------------------------------------------------------------------------
+// SDK 1.13+ Packet Queue Management flat-C entry points
+// ---------------------------------------------------------------------------
+
+EOS_DECLARE_FUNC(EOS_EResult) EOS_P2P_SetPacketQueueSize(EOS_HP2P Handle, const EOS_P2P_SetPacketQueueSizeOptions* Options)
+{
+    if (Handle == nullptr)
+        return EOS_EResult::EOS_InvalidParameters;
+
+    auto pInst = reinterpret_cast<EOSSDK_P2P*>(Handle);
+    return pInst->SetPacketQueueSize(Options);
+}
+
+EOS_DECLARE_FUNC(EOS_EResult) EOS_P2P_GetPacketQueueInfo(EOS_HP2P Handle, const EOS_P2P_GetPacketQueueInfoOptions* Options, EOS_P2P_PacketQueueInfo* OutPacketQueueInfo)
+{
+    if (Handle == nullptr)
+        return EOS_EResult::EOS_InvalidParameters;
+
+    auto pInst = reinterpret_cast<EOSSDK_P2P*>(Handle);
+    return pInst->GetPacketQueueInfo(Options, OutPacketQueueInfo);
+}
+
+EOS_DECLARE_FUNC(EOS_NotificationId) EOS_P2P_AddNotifyIncomingPacketQueueFull(EOS_HP2P Handle, const EOS_P2P_AddNotifyIncomingPacketQueueFullOptions* Options, void* ClientData, EOS_P2P_OnIncomingPacketQueueFullCallback PacketQueueFullHandler)
+{
+    if (Handle == nullptr)
+        return EOS_INVALID_NOTIFICATIONID;
+
+    auto pInst = reinterpret_cast<EOSSDK_P2P*>(Handle);
+    return pInst->AddNotifyIncomingPacketQueueFull(Options, ClientData, PacketQueueFullHandler);
+}
+
+EOS_DECLARE_FUNC(void) EOS_P2P_RemoveNotifyIncomingPacketQueueFull(EOS_HP2P Handle, EOS_NotificationId NotificationId)
+{
+    if (Handle == nullptr)
+        return;
+
+    auto pInst = reinterpret_cast<EOSSDK_P2P*>(Handle);
+    pInst->RemoveNotifyIncomingPacketQueueFull(NotificationId);
+}

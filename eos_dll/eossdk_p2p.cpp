@@ -32,7 +32,11 @@ EOSSDK_P2P::EOSSDK_P2P():
     next_requested_channel(-1),
     _relay_control(EOS_ERelayControl::EOS_RC_AllowRelays),
     _p2p_port(7777),
-    _max_additional_ports_to_try(99)
+    _max_additional_ports_to_try(99),
+    // Default 2 MB inbound queue — matches SDK 1.13 default
+    _packet_queue_size_bytes(2 * 1024 * 1024),
+    _packet_queue_used_bytes(0),
+    _packet_queue_dropped_packets(0)
 {
     GetCB_Manager().register_frame(this);
     GetCB_Manager().register_callbacks(this);
@@ -96,20 +100,7 @@ void EOSSDK_P2P::set_p2p_state_connected(EOS_ProductUserId remote_id, p2p_state_
 }
 
 /**
- * P2P functions to help manage sending and receiving of messages to peers.
- *
- * These functions will attempt to punch through NATs, but will fallback to using Epic relay servers if a direct connection cannot be established.
- */
-
-/**
- * Send a packet to a peer at the specified address. If there is already an open connection to this peer, it will be
- * sent immediately. If there is no open connection, an attempt to connect to the peer will be made. An EOS_Success
- * result only means the data was accepted to be sent, not that it has been successfully delivered to the peer.
- *
- * @param Options Information about the data being sent, by who, to who
- * @return EOS_EResult::EOS_Success           - If packet was queued to be sent successfully
- *         EOS_EResult::EOS_InvalidParameters - If input was invalid
- *         EOS_EResult::EOS_LimitExceeded     - If amount of data being sent is too large
+ * Send a packet to a peer. Respects API version fields including API_003 reliability/discard options.
  */
 EOS_EResult EOSSDK_P2P::SendPacket(const EOS_P2P_SendPacketOptions* Options)
 {
@@ -122,34 +113,72 @@ EOS_EResult EOSSDK_P2P::SendPacket(const EOS_P2P_SendPacketOptions* Options)
     p2p_state_t& p2p_state = _p2p_connections[Options->RemoteUserId];
     P2P_Data_Message_pb data;
 
+    // -----------------------------------------------------------------------
+    // API version dispatch — fall-through from highest to lowest is intentional
+    // so each case enriches the base Options fields already accessible through
+    // the latest struct layout.
+    // API_003 adds: bAllowDelayedDelivery, bDisableAutoAcceptConnection,
+    //               Channel (moved from socket options).
+    // We read those extra flags here and honour them.
+    // -----------------------------------------------------------------------
+    bool allow_delayed_delivery    = true;  // SDK default
+    bool disable_auto_accept       = false; // SDK default
+
     switch (Options->ApiVersion)
     {
         case EOS_P2P_SENDPACKET_API_003:
         {
             const EOS_P2P_SendPacketOptions003* opts = reinterpret_cast<const EOS_P2P_SendPacketOptions003*>(Options);
+            allow_delayed_delivery  = (opts->bAllowDelayedDelivery == EOS_TRUE);
+            disable_auto_accept     = (opts->bDisableAutoAcceptConnection == EOS_TRUE);
+            // fall-through intentional
         }
         case EOS_P2P_SENDPACKET_API_002:
         {
-            const EOS_P2P_SendPacketOptions002* opts = reinterpret_cast<const EOS_P2P_SendPacketOptions002*>(Options);
+            // API_002 has same layout as API_001 for the fields we read below
+            // fall-through intentional
         }
         case EOS_P2P_SENDPACKET_API_001:
         {
-            const EOS_P2P_SendPacketOptions001* opts = reinterpret_cast<const EOS_P2P_SendPacketOptions001*>(Options);
             data.set_data(reinterpret_cast<const char*>(Options->Data), Options->DataLengthBytes);
             data.set_channel(Options->Channel);
             data.set_socket_name(Options->SocketId->SocketName);
             data.set_user_id(Options->LocalUserId->to_string());
         }
+        break;
+
+        default:
+            // Unknown version — still try to read base fields rather than fail
+            data.set_data(reinterpret_cast<const char*>(Options->Data), Options->DataLengthBytes);
+            data.set_channel(Options->Channel);
+            if (Options->SocketId != nullptr)
+                data.set_socket_name(Options->SocketId->SocketName);
+            if (Options->LocalUserId != nullptr)
+                data.set_user_id(Options->LocalUserId->to_string());
+            break;
     }
 
     switch(p2p_state.status)
     {
         case p2p_state_t::status_e::requesting:
         {
-            APP_LOG(Log::LogLevel::INFO, "Implicit P2P acceptation on send");
-            // If we have been requested to connect, then its an implicit acceptation
-            set_p2p_state_connected(Options->RemoteUserId, p2p_state);
+            // If auto-accept is disabled by the caller, we must not implicitly accept.
+            if (!disable_auto_accept)
+            {
+                APP_LOG(Log::LogLevel::INFO, "Implicit P2P acceptation on send");
+                set_p2p_state_connected(Options->RemoteUserId, p2p_state);
+                // fall-through to connected case
+            }
+            else
+            {
+                // Queue the message; the app is expected to call AcceptConnection explicitly.
+                if (!allow_delayed_delivery)
+                    return EOS_EResult::EOS_P2P_ConnectionClosed; // can't send without accepting
+                p2p_state.p2p_out_messages.emplace_back(std::move(data));
+                break;
+            }
         }
+        // fall-through when auto-accept happened above
 
         case p2p_state_t::status_e::connected:
         {// We're connected, send the message now
@@ -164,15 +193,22 @@ EOS_EResult EOSSDK_P2P::SendPacket(const EOS_P2P_SendPacketOptions* Options)
         case p2p_state_t::status_e::connection_loss:
         case p2p_state_t::status_e::connecting:
         {
-            // Save the message for later
-            p2p_state.p2p_out_messages.emplace_back(std::move(data));
+            if (allow_delayed_delivery)
+            {
+                // Save the message for later
+                p2p_state.p2p_out_messages.emplace_back(std::move(data));
+            }
+            // If delayed delivery is disabled, silently discard (matches SDK behaviour).
         }
         break;
 
         case p2p_state_t::status_e::closed:
         {
-            // Save the message for later
-            p2p_state.p2p_out_messages.emplace_back(std::move(data));
+            if (allow_delayed_delivery)
+            {
+                // Save the message for later, then start connecting
+                p2p_state.p2p_out_messages.emplace_back(std::move(data));
+            }
 
             p2p_state.status = p2p_state_t::status_e::connecting;
             p2p_state.socket_name = Options->SocketId->SocketName;
@@ -182,20 +218,14 @@ EOS_EResult EOSSDK_P2P::SendPacket(const EOS_P2P_SendPacketOptions* Options)
             req->set_socket_name(p2p_state.socket_name);
             send_p2p_connection_request(Options->RemoteUserId->to_string(), req);
         }
+        break;
     }
 
     return EOS_EResult::EOS_Success;
 }
 
 /**
- * Gets the size of the packet that will be returned by ReceivePacket for a particular user, if there is any available
- * packets to be retrieved.
- *
- * @param Options Information about who is requesting the size of their next packet
- * @param OutPacketSize The amount of bytes required to store the data of the next packet for the requested user
- * @return EOS_EResult::EOS_Success - If OutPacketSize was successfully set and there is data to be received
- *         EOS_EResult::EOS_InvalidParameters - If input was invalid
- *         EOS_EResult::EOS_NotFound  - If there are no packets available for the requesting user
+ * Gets the size of the next available inbound packet.
  */
 EOS_EResult EOSSDK_P2P::GetNextReceivedPacketSize(const EOS_P2P_GetNextReceivedPacketSizeOptions* Options, uint32_t* OutPacketSizeBytes)
 {
@@ -240,17 +270,7 @@ EOS_EResult EOSSDK_P2P::GetNextReceivedPacketSize(const EOS_P2P_GetNextReceivedP
 }
 
 /**
- * Receive the next packet for the local user, and information associated with this packet, if it exists.
- *
- * @param Options Information about who is requesting the size of their next packet, and how much data can be stored safely
- * @param OutPeerId The Remote User who sent data. Only set if there was a packet to receive.
- * @param OutSocketId The Socket ID of the data that was sent. Only set if there was a packet to receive.
- * @param OutChannel The channel the data was sent on. Only set if there was a packet to receive.
- * @param OutData Buffer to store the data being received. Must be at least EOS_P2P_GetNextReceivedPacketSize in length or data will be truncated
- * @param OutBytesWritten The amount of bytes written to OutData. Only set if there was a packet to receive.
- * @return EOS_EResult::EOS_Success - If the packet was received successfully
- *         EOS_EResult::EOS_InvalidParameters - If input was invalid
- *         EOS_EResult::EOS_NotFound - If there are no packets available for the requesting user
+ * Receive the next packet for the local user.
  */
 EOS_EResult EOSSDK_P2P::ReceivePacket(const EOS_P2P_ReceivePacketOptions* Options, EOS_ProductUserId* OutPeerId, EOS_P2P_SocketId* OutSocketId, uint8_t* OutChannel, void* OutData, uint32_t* OutBytesWritten)
 {
@@ -290,12 +310,20 @@ EOS_EResult EOSSDK_P2P::ReceivePacket(const EOS_P2P_ReceivePacketOptions* Option
 
     auto& msg = queue->front();
 
+    uint32_t msg_size = static_cast<uint32_t>(msg.data().size());
+
     *OutPeerId = GetProductUserId(msg.user_id());
     *OutBytesWritten = static_cast<uint32_t>(msg.data().copy(reinterpret_cast<char*>(OutData), Options->MaxDataSizeBytes));
     msg.socket_name().copy(OutSocketId->SocketName, sizeof(EOS_P2P_SocketId::SocketName));
-    OutSocketId->SocketName[32] = 0;
+    OutSocketId->SocketName[sizeof(EOS_P2P_SocketId::SocketName) - 1] = 0;
     *OutChannel = msg.channel();
     next_requested_channel = -1;
+
+    // Update queue usage tracking
+    if (_packet_queue_used_bytes >= msg_size)
+        _packet_queue_used_bytes -= msg_size;
+    else
+        _packet_queue_used_bytes = 0;
 
     queue->pop_front();
 
@@ -303,13 +331,7 @@ EOS_EResult EOSSDK_P2P::ReceivePacket(const EOS_P2P_ReceivePacketOptions* Option
 }
 
 /**
- * Listen for incoming connection requests on a particular Socket ID, or optionally all Socket IDs. The bound function
- * will only be called if the connection has not already been accepted.
- *
- * @param Options Information about who would like notifications, and (optionally) only for a specific socket
- * @param ClientData This value is returned to the caller when ConnectionRequestHandler is invoked
- * @param ConnectionRequestHandler The callback to be fired when we receive a connection request
- * @return A valid notification ID if successfully bound, or EOS_INVALID_NOTIFICATIONID otherwise
+ * Listen for incoming connection requests on a particular Socket ID.
  */
 EOS_NotificationId EOSSDK_P2P::AddNotifyPeerConnectionRequest(const EOS_P2P_AddNotifyPeerConnectionRequestOptions* Options, void* ClientData, EOS_P2P_OnIncomingConnectionRequestCallback ConnectionRequestHandler)
 {
@@ -330,11 +352,6 @@ EOS_NotificationId EOSSDK_P2P::AddNotifyPeerConnectionRequest(const EOS_P2P_AddN
     return GetCB_Manager().add_notification(this, res);
 }
 
-/**
- * Stop listening for connection requests on a previously bound handler
- *
- * @param NotificationId The previously bound notification ID
- */
 void EOSSDK_P2P::RemoveNotifyPeerConnectionRequest(EOS_NotificationId NotificationId)
 {
     TRACE_FUNC();
@@ -343,20 +360,6 @@ void EOSSDK_P2P::RemoveNotifyPeerConnectionRequest(EOS_NotificationId Notificati
     GetCB_Manager().remove_notification(this, NotificationId);
 }
 
-/**
- * Listen for when a connection is established. This is fired when we first connect to a peer, when we reconnect to a peer after a connection interruption,
- * and when our underlying network connection type changes (for example, from a direct connection to relay, or vice versa). Network Connection Type changes
- * will always be broadcast with a EOS_CET_Reconnection connection type, even if the connection was not interrupted.
- *
- * @param Options Information about who would like notifications about established connections, and for which socket
- * @param ClientData This value is returned to the caller when ConnectionEstablishedHandler is invoked
- * @param ConnectionEstablishedHandler The callback to be fired when a connection has been established
- * @return A valid notification ID if successfully bound, or EOS_INVALID_NOTIFICATIONID otherwise
- *
- * @see EOS_P2P_AddNotifyPeerConnectionInterrupted
- * @see EOS_P2P_AddNotifyPeerConnectionClosed
- * @see EOS_P2P_RemoveNotifyPeerConnectionEstablished
- */
 EOS_NotificationId EOSSDK_P2P::AddNotifyPeerConnectionEstablished(const EOS_P2P_AddNotifyPeerConnectionEstablishedOptions* Options, void* ClientData, EOS_P2P_OnPeerConnectionEstablishedCallback ConnectionEstablishedHandler) {
     TRACE_FUNC();
     GLOBAL_LOCK();
@@ -384,36 +387,12 @@ EOS_NotificationId EOSSDK_P2P::AddNotifyPeerConnectionEstablished(const EOS_P2P_
     return GetCB_Manager().add_notification(this, res);
 }
 
-
-/**
- * Stop notifications for connections being established on a previously bound handler.
- *
- * @param NotificationId The previously bound notification ID
- *
- * @see EOS_P2P_AddNotifyPeerConnectionEstablished
- */
 void EOSSDK_P2P::RemoveNotifyPeerConnectionEstablished(EOS_NotificationId NotificationId) {
     TRACE_FUNC();
     GLOBAL_LOCK();
     GetCB_Manager().remove_notification(this, NotificationId);
 }
 
-
-/**
- * Listen for when a previously opened connection is interrupted. The connection will automatically attempt to reestablish, but it may not be successful.
- *
- * If a connection reconnects, it will trigger the P2P PeerConnectionEstablished notification with the EOS_CET_Reconnection connection type.
- * If a connection fails to reconnect, it will trigger the P2P PeerConnectionClosed notification.
- *
- * @param Options Information about who would like notifications about interrupted connections, and for which socket
- * @param ClientData This value is returned to the caller when ConnectionInterruptedHandler is invoked
- * @param ConnectionInterruptedHandler The callback to be fired when an open connection has been interrupted
- * @return A valid notification ID if successfully bound, or EOS_INVALID_NOTIFICATIONID otherwise
- *
- * @see EOS_P2P_AddNotifyPeerConnectionEstablished
- * @see EOS_P2P_AddNotifyPeerConnectionClosed
- * @see EOS_P2P_RemoveNotifyPeerConnectionInterrupted
- */
 EOS_NotificationId EOSSDK_P2P::AddNotifyPeerConnectionInterrupted(const EOS_P2P_AddNotifyPeerConnectionInterruptedOptions* Options, void* ClientData, EOS_P2P_OnPeerConnectionInterruptedCallback ConnectionInterruptedHandler){
     TRACE_FUNC();
     GLOBAL_LOCK();
@@ -431,11 +410,6 @@ EOS_NotificationId EOSSDK_P2P::AddNotifyPeerConnectionInterrupted(const EOS_P2P_
     return GetCB_Manager().add_notification(this, res);
 }
 
-/**
- * Stop notifications for connections being interrupted on a previously bound handler
- *
- * @param NotificationId The previously bound notification ID
- */
 void EOSSDK_P2P::RemoveNotifyPeerConnectionInterrupted(EOS_NotificationId NotificationId)
 {
     TRACE_FUNC();
@@ -444,15 +418,6 @@ void EOSSDK_P2P::RemoveNotifyPeerConnectionInterrupted(EOS_NotificationId Notifi
     GetCB_Manager().remove_notification(this, NotificationId);
 }
 
-
-/**
- * Listen for when a previously opened connection is closed
- *
- * @param Options Information about who would like notifications about closed connections, and for which socket
- * @param ClientData This value is returned to the caller when ConnectionClosedHandler is invoked
- * @param ConnectionClosedHandler The callback to be fired when we an open connection has been closed
- * @return A valid notification ID if successfully bound, or EOS_INVALID_NOTIFICATIONID otherwise
- */
 EOS_NotificationId EOSSDK_P2P::AddNotifyPeerConnectionClosed(const EOS_P2P_AddNotifyPeerConnectionClosedOptions* Options, void* ClientData, EOS_P2P_OnRemoteConnectionClosedCallback ConnectionClosedHandler)
 {
     TRACE_FUNC();
@@ -473,11 +438,6 @@ EOS_NotificationId EOSSDK_P2P::AddNotifyPeerConnectionClosed(const EOS_P2P_AddNo
     return GetCB_Manager().add_notification(this, res);
 }
 
-/**
- * Stop notifications for connections being closed on a previously bound handler
- *
- * @param NotificationId The previously bound notification ID
- */
 void EOSSDK_P2P::RemoveNotifyPeerConnectionClosed(EOS_NotificationId NotificationId)
 {
     TRACE_FUNC();
@@ -486,13 +446,6 @@ void EOSSDK_P2P::RemoveNotifyPeerConnectionClosed(EOS_NotificationId Notificatio
     GetCB_Manager().remove_notification(this, NotificationId);
 }
 
-/**
- * Accept connections from a specific peer. If this peer has not attempted to connect yet, when they do, they will automatically be accepted.
- *
- * @param Options Information about who would like to accept a connection, and which connection
- * @return EOS_EResult::EOS_Success - if the provided data is valid
- *         EOS_EResult::EOS_InvalidParameters - if the provided data is invalid
- */
 EOS_EResult EOSSDK_P2P::AcceptConnection(const EOS_P2P_AcceptConnectionOptions* Options)
 {
     TRACE_FUNC();
@@ -515,13 +468,6 @@ EOS_EResult EOSSDK_P2P::AcceptConnection(const EOS_P2P_AcceptConnectionOptions* 
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Stop accepting new connections from a specific peer and close any open connections.
- *
- * @param Options Information about who would like to close a connection, and which connection.
- * @return EOS_EResult::EOS_Success - if the provided data is valid
- *         EOS_EResult::EOS_InvalidParameters - if the provided data is invalid
- */
 EOS_EResult EOSSDK_P2P::CloseConnection(const EOS_P2P_CloseConnectionOptions* Options)
 {
     TRACE_FUNC();
@@ -579,13 +525,6 @@ EOS_EResult EOSSDK_P2P::CloseConnection(const EOS_P2P_CloseConnectionOptions* Op
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Close any open Connections for a specific Peer Connection ID.
- *
- * @param Options Information about who would like to close connections, and by what socket ID
- * @return EOS_EResult::EOS_Success - if the provided data is valid
- *         EOS_EResult::EOS_InvalidParameters - if the provided data is invalid
- */
 EOS_EResult EOSSDK_P2P::CloseConnections(const EOS_P2P_CloseConnectionsOptions* Options)
 {
     TRACE_FUNC();
@@ -609,12 +548,6 @@ EOS_EResult EOSSDK_P2P::CloseConnections(const EOS_P2P_CloseConnectionsOptions* 
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Query the current NAT-type of our connection.
- *
- * @param Options Information about what version of the EOS_P2P_QueryNATType API is supported
- * @param NATTypeQueriedHandler The callback to be fired when we finish querying our NAT type
- */
 void EOSSDK_P2P::QueryNATType(const EOS_P2P_QueryNATTypeOptions* Options, void* ClientData, const EOS_P2P_OnQueryNATTypeCompleteCallback NATTypeQueriedHandler)
 {
     TRACE_FUNC();
@@ -643,15 +576,6 @@ void EOSSDK_P2P::QueryNATType(const EOS_P2P_QueryNATTypeOptions* Options, void* 
     GetCB_Manager().add_callback(this, res);
 }
 
-/**
- * Get our last-queried NAT-type, if it has been successfully queried.
- *
- * @param Options Information about what version of the EOS_P2P_GetNATType API they support
- * @param OutNATType The queried NAT Type, or unknown if unknown
- * @return EOS_EResult::EOS_Success - if we have cached data
- *         EOS_EResult::EOS_NotFound - If we do not have queried data cached
- *         EOS_EResult::EOS_IncompatibleVersion - If the provided version is unknown
- */
 EOS_EResult EOSSDK_P2P::GetNATType(const EOS_P2P_GetNATTypeOptions* Options, EOS_ENATType* OutNATType)
 {
     TRACE_FUNC();
@@ -662,14 +586,6 @@ EOS_EResult EOSSDK_P2P::GetNATType(const EOS_P2P_GetNATTypeOptions* Options, EOS
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Set how relay servers are to be used. This setting does not immediately apply to existing connections, but may apply to existing
- * connections if the connection requires renegotiation.
- *
- * @param Options Information about relay server config options
- * @return EOS_EResult::EOS_Success - if the options were set successfully
- *         EOS_EResult::EOS_InvalidParameters - if the options are invalid in some way
- */
 EOS_EResult EOSSDK_P2P::SetRelayControl(const EOS_P2P_SetRelayControlOptions* Options)
 {
     TRACE_FUNC();
@@ -682,14 +598,6 @@ EOS_EResult EOSSDK_P2P::SetRelayControl(const EOS_P2P_SetRelayControlOptions* Op
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Get the current relay control setting.
- *
- * @param Options Information about what version of the EOS_P2P_GetRelayControl API is supported
- * @param OutRelayControl The relay control setting currently configured
- * @return EOS_EResult::EOS_Success - if the input was valid
- *         EOS_EResult::EOS_InvalidParameters - if the input was invalid in some way
- */
 EOS_EResult EOSSDK_P2P::GetRelayControl(const EOS_P2P_GetRelayControlOptions* Options, EOS_ERelayControl* OutRelayControl)
 {
     TRACE_FUNC();
@@ -702,13 +610,6 @@ EOS_EResult EOSSDK_P2P::GetRelayControl(const EOS_P2P_GetRelayControlOptions* Op
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Set configuration options related to network ports.
- *
- * @param Options Information about network ports config options
- * @return EOS_EResult::EOS_Success - if the options were set successfully
- *         EOS_EResult::EOS_InvalidParameters - if the options are invalid in some way
- */
 EOS_EResult EOSSDK_P2P::SetPortRange(const EOS_P2P_SetPortRangeOptions* Options)
 {
     TRACE_FUNC();
@@ -722,15 +623,6 @@ EOS_EResult EOSSDK_P2P::SetPortRange(const EOS_P2P_SetPortRangeOptions* Options)
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Get the current chosen port and the amount of other ports to try above the chosen port if the chosen port is unavailable.
- *
- * @param Options Information about what version of the EOS_P2P_GetPortRange API is supported
- * @param OutPort The port that will be tried first
- * @param OutNumAdditionalPortsToTry The amount of ports to try above the value in OutPort, if OutPort is unavailable
- * @return EOS_EResult::EOS_Success - if the input options were valid
- *         EOS_EResult::EOS_InvalidParameters - if the input was invalid in some way
- */
 EOS_EResult EOSSDK_P2P::GetPortRange(const EOS_P2P_GetPortRangeOptions* Options, uint16_t* OutPort, uint16_t* OutNumAdditionalPortsToTry)
 {
     TRACE_FUNC();
@@ -742,6 +634,104 @@ EOS_EResult EOSSDK_P2P::GetPortRange(const EOS_P2P_GetPortRangeOptions* Options,
     *OutPort = _p2p_port;
     *OutNumAdditionalPortsToTry = _max_additional_ports_to_try;
     return EOS_EResult::EOS_Success;
+}
+
+// ---------------------------------------------------------------------------
+// SDK 1.13+ Packet Queue Management
+// ---------------------------------------------------------------------------
+
+/**
+ * Set the maximum byte size of the inbound packet queue.
+ * Packets received while the queue is full are dropped and the
+ * AddNotifyIncomingPacketQueueFull callback fires.
+ *
+ * @param Options  Must contain a valid PacketQueueMaxSizeBytes (>= 4096).
+ */
+EOS_EResult EOSSDK_P2P::SetPacketQueueSize(const EOS_P2P_SetPacketQueueSizeOptions* Options)
+{
+    TRACE_FUNC();
+    GLOBAL_LOCK();
+
+    if (Options == nullptr)
+        return EOS_EResult::EOS_InvalidParameters;
+
+    // SDK enforces a minimum of 4 KB
+    if (Options->PacketQueueMaxSizeBytes < 4096)
+        return EOS_EResult::EOS_InvalidParameters;
+
+    _packet_queue_size_bytes = Options->PacketQueueMaxSizeBytes;
+    APP_LOG(Log::LogLevel::INFO, "P2P packet queue size set to %llu bytes", (unsigned long long)_packet_queue_size_bytes);
+    return EOS_EResult::EOS_Success;
+}
+
+/**
+ * Get current packet queue metrics.
+ */
+EOS_EResult EOSSDK_P2P::GetPacketQueueInfo(const EOS_P2P_GetPacketQueueInfoOptions* Options, EOS_P2P_PacketQueueInfo* OutPacketQueueInfo)
+{
+    TRACE_FUNC();
+    GLOBAL_LOCK();
+
+    if (Options == nullptr || OutPacketQueueInfo == nullptr)
+        return EOS_EResult::EOS_InvalidParameters;
+
+    // Compute current inbound queue byte usage from the in-message map
+    uint64_t used = 0;
+    for (auto& channel_queue : _p2p_in_messages)
+    {
+        for (auto& msg : channel_queue.second)
+        {
+            used += static_cast<uint64_t>(msg.data().size());
+        }
+    }
+    _packet_queue_used_bytes = used;
+
+    OutPacketQueueInfo->IncomingPacketQueueMaxSizeBytes  = _packet_queue_size_bytes;
+    OutPacketQueueInfo->IncomingPacketQueueCurrentSizeBytes = _packet_queue_used_bytes;
+    OutPacketQueueInfo->IncomingPacketQueueCurrentPacketCount = 0;
+    for (auto& ch : _p2p_in_messages)
+        OutPacketQueueInfo->IncomingPacketQueueCurrentPacketCount += static_cast<uint64_t>(ch.second.size());
+
+    // Outbound queue is not bounded in this emulator — report as zero used / max capacity.
+    OutPacketQueueInfo->OutgoingPacketQueueMaxSizeBytes          = _packet_queue_size_bytes;
+    OutPacketQueueInfo->OutgoingPacketQueueCurrentSizeBytes      = 0;
+    OutPacketQueueInfo->OutgoingPacketQueueCurrentPacketCount    = 0;
+
+    return EOS_EResult::EOS_Success;
+}
+
+/**
+ * Register a notification callback for when the inbound packet queue is full
+ * and an incoming packet had to be dropped.
+ */
+EOS_NotificationId EOSSDK_P2P::AddNotifyIncomingPacketQueueFull(
+    const EOS_P2P_AddNotifyIncomingPacketQueueFullOptions* Options,
+    void* ClientData,
+    EOS_P2P_OnIncomingPacketQueueFullCallback PacketQueueFullHandler)
+{
+    TRACE_FUNC();
+    GLOBAL_LOCK();
+
+    if (PacketQueueFullHandler == nullptr)
+        return EOS_INVALID_NOTIFICATIONID;
+
+    pFrameResult_t res(new FrameResult);
+    EOS_P2P_OnIncomingPacketQueueFullInfo& info = res->CreateCallback<EOS_P2P_OnIncomingPacketQueueFullInfo>((CallbackFunc)PacketQueueFullHandler);
+    info.ClientData                            = ClientData;
+    info.PacketQueueMaxSizeBytes               = _packet_queue_size_bytes;
+    info.PacketQueueCurrentSizeBytes           = _packet_queue_used_bytes;
+    info.OverflowPacketLocalUserId             = Settings::Inst().productuserid;
+    info.OverflowPacketChannel                 = 0;
+    info.OverflowPacketSizeBytes               = 0;
+
+    return GetCB_Manager().add_notification(this, res);
+}
+
+void EOSSDK_P2P::RemoveNotifyIncomingPacketQueueFull(EOS_NotificationId NotificationId)
+{
+    TRACE_FUNC();
+    GLOBAL_LOCK();
+    GetCB_Manager().remove_notification(this, NotificationId);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -859,10 +849,9 @@ bool EOSSDK_P2P::on_peer_connect(Network_Message_pb const& msg, Network_Peer_Con
     {
         it->second.status = p2p_state_t::status_e::connected;
 
-        // Now that the client is back, send all queued messages
-        for (auto& msg : it->second.p2p_out_messages)
+        for (auto& m : it->second.p2p_out_messages)
         {
-            send_p2p_data(it->first->to_string(), &msg);
+            send_p2p_data(it->first->to_string(), &m);
         }
         it->second.p2p_out_messages.clear();
     }
@@ -969,11 +958,39 @@ bool EOSSDK_P2P::on_p2p_data(Network_Message_pb const& msg, P2P_Data_Message_pb 
             APP_LOG(Log::LogLevel::INFO, "Implicit P2P acceptation on receive");
             set_p2p_state_connected(remote_id, p2p_state);
         }
+        // fall-through
 
         case p2p_state_t::status_e::connected:
         {
+            uint64_t pkt_size = static_cast<uint64_t>(data.data().size());
+
+            // Check if adding this packet would overflow the queue
+            if ((_packet_queue_used_bytes + pkt_size) > _packet_queue_size_bytes)
+            {
+                // Drop packet and fire queue-full notifications
+                ++_packet_queue_dropped_packets;
+                APP_LOG(Log::LogLevel::WARN, "Inbound P2P packet queue full, dropping packet (%llu bytes)", (unsigned long long)pkt_size);
+
+                std::vector<pFrameResult_t> notifs = std::move(GetCB_Manager().get_notifications(this, EOS_P2P_OnIncomingPacketQueueFullInfo::k_iCallback));
+                for (auto& notif : notifs)
+                {
+                    EOS_P2P_OnIncomingPacketQueueFullInfo& info = notif->GetCallback<EOS_P2P_OnIncomingPacketQueueFullInfo>();
+                    info.PacketQueueMaxSizeBytes       = _packet_queue_size_bytes;
+                    info.PacketQueueCurrentSizeBytes   = _packet_queue_used_bytes;
+                    info.OverflowPacketLocalUserId     = Settings::Inst().productuserid;
+                    info.OverflowPacketChannel         = static_cast<uint8_t>(data.channel());
+                    info.OverflowPacketSizeBytes       = static_cast<uint32_t>(pkt_size);
+                    notif->GetFunc()(notif->GetFuncParam());
+                }
+
+                ack->set_channel(data.channel());
+                ack->set_accepted(false);
+                return send_p2p_data_ack(msg.source_id(), ack);
+            }
+
             ack->set_channel(data.channel());
             ack->set_accepted(true);
+            _packet_queue_used_bytes += pkt_size;
             _p2p_in_messages[data.channel()].emplace_back(data);
         }
         break;
@@ -1076,6 +1093,9 @@ bool EOSSDK_P2P::CBRunFrame()
                 }
             }
             break;
+
+            default:
+                break;
         }
     }
 
@@ -1099,6 +1119,9 @@ bool EOSSDK_P2P::RunNetwork(Network_Message_pb const& msg)
                 default: APP_LOG(Log::LogLevel::WARN, "Unhandled network message %d", p2p.message_case());
             }
         }
+        break;
+        default:
+            break;
     }
 
     return true;
@@ -1117,18 +1140,6 @@ void EOSSDK_P2P::FreeCallback(pFrameResult_t res)
 
     switch (res->ICallback())
     {
-        /////////////////////////////
-        //        Callbacks        //
-        /////////////////////////////
-        //case callback_type::k_iCallback:
-        //{
-        //    callback_type& callback = res->GetCallback<callback_type>();
-        //    // Free resources
-        //}
-        //break;
-        /////////////////////////////
-        //      Notifications      //
-        /////////////////////////////
         case EOS_P2P_OnIncomingConnectionRequestInfo::k_iCallback:
         {
             EOS_P2P_OnIncomingConnectionRequestInfo& callback = res->GetCallback<EOS_P2P_OnIncomingConnectionRequestInfo>();
@@ -1141,6 +1152,9 @@ void EOSSDK_P2P::FreeCallback(pFrameResult_t res)
             delete callback.SocketId;
         }
         break;
+        // EOS_P2P_OnIncomingPacketQueueFullInfo owns no heap pointers — nothing to free
+        default:
+            break;
     }
 }
 

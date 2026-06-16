@@ -70,39 +70,22 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
         if (Options != nullptr)
         {
             _api_version = Options->ApiVersion;
-
-            // Clamp any future unknown API version down to the highest we know.
-            // This prevents abort() on newer game builds while still running all
-            // the fallthrough cases below to populate every field we support.
-            int32_t effective_version = Options->ApiVersion;
-            if (effective_version > EOS_PLATFORM_OPTIONS_API_014)
+            switch (Options->ApiVersion)
             {
-                APP_LOG(Log::LogLevel::WARN,
-                    "EOS_Platform_Create: unknown API version %d, clamping to %d",
-                    Options->ApiVersion, EOS_PLATFORM_OPTIONS_API_014);
-                effective_version = EOS_PLATFORM_OPTIONS_API_014;
-            }
-
-            switch (effective_version)
-            {
-                case EOS_PLATFORM_OPTIONS_API_014:
+                case EOS_PLATFORM_OPTIONS_API_014: 
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options014*>(Options);
-                    // TaskNetworkTimeoutSeconds is optional — MUST guard before deref
-                    if (pf->TaskNetworkTimeoutSeconds != nullptr)
-                        APP_LOG(Log::LogLevel::DEBUG, "TaskNetworkTimeoutSeconds = '%d'", *pf->TaskNetworkTimeoutSeconds);
-                    else
-                        APP_LOG(Log::LogLevel::DEBUG, "TaskNetworkTimeoutSeconds = (null/default)");
-                } // FALLTHROUGH
+                    APP_LOG(Log::LogLevel::DEBUG, "IntegratedPlatformOptionsContainerHandle = '%s'", pf->IntegratedPlatformOptionsContainerHandle);
+                    APP_LOG(Log::LogLevel::DEBUG, "OverrideLocaleCode = '%d'", *pf->TaskNetworkTimeoutSeconds);
+                    APP_LOG(Log::LogLevel::DEBUG, "DeploymentId = '%s'", _deployment_id.c_str());
+                }
                 case EOS_PLATFORM_OPTIONS_API_013:
                 case EOS_PLATFORM_OPTIONS_API_012:
                 case EOS_PLATFORM_OPTIONS_API_011:
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options011*>(Options);
-                    // RTCOptions is optional
-                    if (pf->RTCOptions != nullptr)
-                        APP_LOG(Log::LogLevel::DEBUG, "RTCOptions.ApiVersion = '%d'", pf->RTCOptions->ApiVersion);
-                } // FALLTHROUGH
+                    if (pf->RTCOptions != NULL) APP_LOG(Log::LogLevel::DEBUG, "RTCOptions = '%s'", pf->RTCOptions->ApiVersion);
+                }
                 case EOS_PLATFORM_OPTIONS_API_010:
                 case EOS_PLATFORM_OPTIONS_API_009:
                 case EOS_PLATFORM_OPTIONS_API_008:
@@ -113,7 +96,7 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                         _ticket_budget_in_milliseconds = pf->TickBudgetInMilliseconds;
 
                     APP_LOG(Log::LogLevel::DEBUG, "TickBudgetInMilliseconds = '%d'", _ticket_budget_in_milliseconds);
-                } // FALLTHROUGH
+                }                
                 case EOS_PLATFORM_OPTIONS_API_006:
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options006*>(Options);
@@ -121,7 +104,7 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                         _cache_directory = pf->CacheDirectory;
 
                     APP_LOG(Log::LogLevel::DEBUG, "CacheDirectory = '%s'", _cache_directory.c_str());
-                } // FALLTHROUGH
+                }
                 case EOS_PLATFORM_OPTIONS_API_005:
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options005*>(Options);
@@ -144,7 +127,7 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                     APP_LOG(Log::LogLevel::DEBUG, "OverrideLocaleCode = '%s'", _override_locale_code.c_str());
                     APP_LOG(Log::LogLevel::DEBUG, "DeploymentId = '%s'", _deployment_id.c_str());
                     APP_LOG(Log::LogLevel::DEBUG, "Flags = %llu", _flags);
-                } // FALLTHROUGH
+                }
                 case EOS_PLATFORM_OPTIONS_API_001:
                 {
                     auto pf = reinterpret_cast<const EOS_Platform_Options001*>(Options);
@@ -173,9 +156,8 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
                 break;
 
                 default:
-                    // Should never reach here due to version clamping above
-                    APP_LOG(Log::LogLevel::WARN, "Unhandled version %d after clamp", effective_version);
-                    break;
+                    APP_LOG(Log::LogLevel::FATAL, "Unmanaged API version %d", Options->ApiVersion);
+                    abort();
             }
         }
 
@@ -237,67 +219,67 @@ void EOSSDK_Platform::Tick()
     GetCB_Manager().tick();
 }
 
-EOS_HMetrics EOSSDK_Platform::GetMetricsInterface()
+EOS_HMetrics           EOSSDK_Platform::GetMetricsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HMetrics>(_metrics);
 }
 
-EOS_HAuth EOSSDK_Platform::GetAuthInterface()
+EOS_HAuth              EOSSDK_Platform::GetAuthInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HAuth>(_auth);
 }
 
-EOS_HConnect EOSSDK_Platform::GetConnectInterface()
+EOS_HConnect           EOSSDK_Platform::GetConnectInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HConnect>(_connect);
 }
 
-EOS_HEcom EOSSDK_Platform::GetEcomInterface()
+EOS_HEcom              EOSSDK_Platform::GetEcomInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HEcom>(_ecom);
 }
 
-EOS_HUI EOSSDK_Platform::GetUIInterface()
+EOS_HUI                EOSSDK_Platform::GetUIInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HUI>(_ui);
 }
 
-EOS_HFriends EOSSDK_Platform::GetFriendsInterface()
+EOS_HFriends           EOSSDK_Platform::GetFriendsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HFriends>(_friends);
 }
 
-EOS_HPresence EOSSDK_Platform::GetPresenceInterface()
+EOS_HPresence          EOSSDK_Platform::GetPresenceInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HPresence>(_presence);
 }
 
-EOS_HSessions EOSSDK_Platform::GetSessionsInterface()
+EOS_HSessions          EOSSDK_Platform::GetSessionsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HSessions>(_sessions);
 }
 
-EOS_HLobby EOSSDK_Platform::GetLobbyInterface()
+EOS_HLobby             EOSSDK_Platform::GetLobbyInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HLobby>(_lobby);
 }
 
-EOS_HUserInfo EOSSDK_Platform::GetUserInfoInterface()
+EOS_HUserInfo          EOSSDK_Platform::GetUserInfoInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HUserInfo>(_userinfo);
 }
 
-EOS_HP2P EOSSDK_Platform::GetP2PInterface()
+EOS_HP2P               EOSSDK_Platform::GetP2PInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HP2P>(_p2p);
@@ -315,19 +297,19 @@ EOS_HTitleStorage EOSSDK_Platform::GetTitleStorageInterface()
     return reinterpret_cast<EOS_HTitleStorage>(_titlestorage);
 }
 
-EOS_HAchievements EOSSDK_Platform::GetAchievementsInterface()
+EOS_HAchievements      EOSSDK_Platform::GetAchievementsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HAchievements>(_achievements);
 }
 
-EOS_HStats EOSSDK_Platform::GetStatsInterface()
+EOS_HStats             EOSSDK_Platform::GetStatsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HStats>(_stats);
 }
 
-EOS_HLeaderboards EOSSDK_Platform::GetLeaderboardsInterface()
+EOS_HLeaderboards      EOSSDK_Platform::GetLeaderboardsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HLeaderboards>(_leaderboards);
@@ -340,14 +322,28 @@ EOS_EResult EOSSDK_Platform::GetActiveCountryCode(EOS_EpicAccountId LocalUserId,
     if (OutBuffer == nullptr || InOutBufferLength == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    if (*InOutBufferLength < (utils::static_strlen("") + 1))
-        return EOS_EResult::EOS_LimitExceeded;
+    if (!_override_country_code.empty())
+    {
+        int32_t needed = static_cast<int32_t>(_override_country_code.length()) + 1;
+        if (*InOutBufferLength < needed)
+        {
+            *InOutBufferLength = needed;
+            return EOS_EResult::EOS_LimitExceeded;
+        }
+        strncpy(OutBuffer, _override_country_code.c_str(), static_cast<size_t>(needed));
+        *InOutBufferLength = needed;
+        return EOS_EResult::EOS_Success;
+    }
 
-    strncpy(OutBuffer, "", utils::static_strlen("") + 1);
-
-    return EOS_EResult::EOS_Success;
+    return EOS_EResult::EOS_NotFound;
 }
 
+/**
+ * Returns the active locale code.
+ * Priority: (1) override set via SetOverrideLocaleCode / Platform init,
+ *           (2) language from NemirtingasEpicEmu.json,
+ *           (3) hardcoded fallback "en".
+ */
 EOS_EResult EOSSDK_Platform::GetActiveLocaleCode(EOS_EpicAccountId LocalUserId, char* OutBuffer, int32_t* InOutBufferLength)
 {
     TRACE_FUNC();
@@ -355,11 +351,20 @@ EOS_EResult EOSSDK_Platform::GetActiveLocaleCode(EOS_EpicAccountId LocalUserId, 
     if (OutBuffer == nullptr || InOutBufferLength == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    if (*InOutBufferLength < (utils::static_strlen("en") + 1))
+    // Determine which locale string to return
+    const std::string& locale = !_override_locale_code.empty()
+        ? _override_locale_code
+        : Settings::Inst().language;  // e.g. "en", "de", "fr" from config
+
+    int32_t needed = static_cast<int32_t>(locale.length()) + 1;
+    if (*InOutBufferLength < needed)
+    {
+        *InOutBufferLength = needed;
         return EOS_EResult::EOS_LimitExceeded;
+    }
 
-    strncpy(OutBuffer, "en", utils::static_strlen("en") + 1);
-
+    strncpy(OutBuffer, locale.c_str(), static_cast<size_t>(needed));
+    *InOutBufferLength = needed;
     return EOS_EResult::EOS_Success;
 }
 
@@ -370,9 +375,9 @@ EOS_EResult EOSSDK_Platform::GetOverrideCountryCode(char* OutBuffer, int32_t* In
     if (OutBuffer == nullptr || InOutBufferLength == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    if (*InOutBufferLength < (_override_country_code.length() + 1))
+    if (*InOutBufferLength < (int32_t)(_override_country_code.length() + 1))
     {
-        *InOutBufferLength = _override_country_code.length() + 1;
+        *InOutBufferLength = static_cast<int32_t>(_override_country_code.length()) + 1;
         return EOS_EResult::EOS_LimitExceeded;
     }
 
@@ -388,9 +393,9 @@ EOS_EResult EOSSDK_Platform::GetOverrideLocaleCode(char* OutBuffer, int32_t* InO
     if (OutBuffer == nullptr || InOutBufferLength == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    if (*InOutBufferLength < (_override_locale_code.length() + 1))
+    if (*InOutBufferLength < (int32_t)(_override_locale_code.length() + 1))
     {
-        *InOutBufferLength = _override_locale_code.length() + 1;
+        *InOutBufferLength = static_cast<int32_t>(_override_locale_code.length()) + 1;
         return EOS_EResult::EOS_LimitExceeded;
     }
 
