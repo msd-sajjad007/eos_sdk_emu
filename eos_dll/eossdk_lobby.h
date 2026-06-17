@@ -23,33 +23,19 @@
 #include "callback_manager.h"
 #include "network.h"
 #include "network_proto.pb.h"
-
-// [FIX] Forward-declare dependent SDK types before they are used as a base
-// class or as a template argument below.  The full definitions live in
-// eossdk_lobbydetails.h / eossdk_lobbysearch.h which cannot be included here
-// without creating circular-include cycles.
-namespace sdk
-{
-    class EOSSDK_LobbyDetails;
-    class EOSSDK_LobbySearch;
-}
+// Full class definition needed because lobby_t inherits from EOSSDK_LobbyDetails.
+// eossdk_lobbydetails.h also defines lobby_state_t which is used below.
+#include "eossdk_lobbydetails.h"
 
 namespace sdk
 {
+
+// Forward-declare EOSSDK_LobbySearch (pointer/reference only, no inheritance).
+class EOSSDK_LobbySearch;
 
 struct lobby_invite_t
 {
     EOS_ProductUserId peer_id;
-    Lobby_Infos_pb infos;
-};
-
-struct lobby_state_t
-{
-    enum {
-        none,
-        created,
-        joined,
-    } state;
     Lobby_Infos_pb infos;
 };
 
