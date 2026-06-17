@@ -8,6 +8,15 @@
 typedef struct EOS_IntegratedPlatformOptionsContainerHandle* EOS_HIntegratedPlatformOptionsContainer;
 typedef struct EOS_IntegratedPlatformHandle* EOS_HIntegratedPlatform;
 
+/**
+ * A handle representing an integrated platform type.
+ * The value is a null-terminated string constant, e.g. EOS_IPT_Steam = "STEAM".
+ */
+#ifndef EOS_INTEGRATEDPLATFORMTYPE_DEFINED
+#define EOS_INTEGRATEDPLATFORMTYPE_DEFINED
+typedef const char* EOS_IntegratedPlatformType;
+#endif
+
 /** These flags are used to determine how a specific Integrated Platform will be managed. */
 EOS_ENUM(EOS_EIntegratedPlatformManagementFlags,
 	/** The integrated platform library should be disabled. This is equivalent to providing no flags. */
@@ -173,7 +182,7 @@ EOS_STRUCT(EOS_IntegratedPlatform_Steam_Options, (
 	 *		STEAMVIDEO_INTERFACE_VERSION "\0"
 	 *      "\0";
 	 * 
-	 *  uint32_t SteamApiInterfaceVersionsArrayBytes = sizeof(SteamApiInterfaceVersionsArray) // Note: sizeof() takes into account the last "\0" of the string literal;
+	 *  uint32_t SteamApiInterfaceVersionsArrayBytes = sizeof(SteamInterfaceVersionsArray) // Note: sizeof() takes into account the last "\0" of the string literal;
 	 */
 	uint32_t SteamApiInterfaceVersionsArrayBytes;
 ));
