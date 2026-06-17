@@ -1,8 +1,6 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "eos_common.h"
-
 #pragma pack(push, 8)
 
 /** The most recent version of the EOS_Auth_Token struct. */
@@ -17,7 +15,7 @@ EOS_STRUCT(EOS_Auth_Token001, (
 	/** Client id that requested this token */
 	const char* ClientId;
 	/** User account associated with this auth token */
-	EOS_AccountId AccountId;
+	EOS_EpicAccountId AccountId;
 	/** Signature of the access token */
 	const char* AccessToken;
 	/** Time before the access token expires, in seconds, relative to the call to EOS_Auth_CopyUserAuthToken */
@@ -75,7 +73,7 @@ EOS_STRUCT(EOS_Auth_CreateDeviceAuthOptions001, (
 	/** Version of the API */
 	int32_t ApiVersion;
 	/** Account ID of the local player to create device auth for */
-	EOS_AccountId LocalUserId;
+	EOS_EpicAccountId LocalUserId;
 	/** Device details related to the create device request, details stored on the backend */
 	EOS_DeviceInfo* DeviceInfo;
 ));
@@ -90,7 +88,7 @@ EOS_STRUCT(EOS_Auth_DeleteDeviceAuthOptions001, (
 	/** Version of the API */
 	int32_t ApiVersion;
 	/** Account ID of the local player whose device auth details will be deleted */
-	EOS_AccountId LocalUserId;
+	EOS_EpicAccountId LocalUserId;
 	/** Device auth credentials to be deleted */
 	EOS_Auth_Credentials* Credentials;
 ));
