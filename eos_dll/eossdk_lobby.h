@@ -22,7 +22,7 @@
 #include "common_includes.h"
 #include "callback_manager.h"
 #include "network.h"
-#include "lobby.pb.h"
+#include "network_proto.pb.h"
 
 namespace sdk
 {

@@ -183,7 +183,7 @@ EOS_DECLARE_FUNC(void) EOS_Connect_RemoveNotifyLoginStatusChanged(EOS_HConnect H
     pInst->RemoveNotifyLoginStatusChanged(InId);
 }
 
-EOS_DECLARE_FUNC(int32_t) EOS_Connect_GetProductUserExternalAccountCount(EOS_HConnect Handle, const EOS_Connect_GetProductUserExternalAccountCountOptions* Options)
+EOS_DECLARE_FUNC(uint32_t) EOS_Connect_GetProductUserExternalAccountCount(EOS_HConnect Handle, const EOS_Connect_GetProductUserExternalAccountCountOptions* Options)
 {
     if (Handle == nullptr)
         return 0;
