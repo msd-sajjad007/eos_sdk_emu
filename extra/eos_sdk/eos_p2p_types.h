@@ -29,6 +29,9 @@ enum { k_iP2PCallbackBase = 9000 };
 #define EOS_P2P_AddNotifyIncomingPacketQueueFullOptions   EOS_P2P_AddNotifyIncomingPacketQueueFullOptions001
 #define EOS_P2P_AddNotifyPeerConnectionEstablishedOptions EOS_P2P_AddNotifyPeerConnectionEstablishedOptions001
 #define EOS_P2P_ClearPacketQueueOptions                   EOS_P2P_ClearPacketQueueOptions001
+// [FIX] Missing alias: EOS_P2P_PacketQueueInfo001 is defined in eos_p2p_types1.16.4.h
+// but there was no unversioned alias macro, causing eossdk_p2p.h to fail to compile.
+#define EOS_P2P_PacketQueueInfo                           EOS_P2P_PacketQueueInfo001
 
 
 #include "eos_p2p_types1.16.4.h"

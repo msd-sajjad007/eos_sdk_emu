@@ -84,6 +84,55 @@ void Settings::load_settings()
     if (settings_json.contains("max_p2p_ports_tried") && settings_json["max_p2p_ports_tried"].is_number_unsigned())
         max_p2p_ports_tried = settings_json["max_p2p_ports_tried"].get<uint16_t>();
 
-    APP_LOG(Log::LogLevel::INFO, "Settings loaded: user='%s' id='%s' product='%s' sandbox='%s' deployment='%s'",
-        username.c_str(), userid.c_str(), product_id.c_str(), sandbox_id.c_str(), deployment_id.c_str());
+    // [FIX] disable_online_networking flag
+    if (settings_json.contains("disable_online_networking") && settings_json["disable_online_networking"].is_boolean())
+        disable_online_networking = settings_json["disable_online_networking"].get<bool>();
+    else
+        disable_online_networking = false;
+
+    // [FIX] gamename field
+    if (settings_json.contains("gamename") && settings_json["gamename"].is_string())
+        gamename = settings_json["gamename"].get<std::string>();
+    else
+        gamename = "DefaultGameName";
+
+    APP_LOG(Log::LogLevel::INFO, "Settings loaded: user='%s' id='%s' product='%s' sandbox='%s' deployment='%s' gamename='%s' disable_online_networking=%d",
+        username.c_str(), userid.c_str(), product_id.c_str(), sandbox_id.c_str(), deployment_id.c_str(),
+        gamename.c_str(), (int)disable_online_networking);
+}
+
+// [FIX] save_settings() — writes the current gamename back to eos_settings.json
+// so that a game-supplied ProductName persists across restarts.
+void Settings::save_settings()
+{
+    auto settings_path = GetExePath() / "eos_settings.json";
+
+    json settings_json;
+
+    // Read existing file first so we don't clobber unrelated fields
+    {
+        std::ifstream in(settings_path);
+        if (in.is_open())
+        {
+            try { in >> settings_json; }
+            catch (...) { settings_json = json::object(); }
+        }
+        else
+        {
+            settings_json = json::object();
+        }
+    }
+
+    settings_json["gamename"]                  = gamename;
+    settings_json["disable_online_networking"] = disable_online_networking;
+
+    std::ofstream out(settings_path);
+    if (!out.is_open())
+    {
+        APP_LOG(Log::LogLevel::WARN, "Could not write settings file: %s", settings_path.string().c_str());
+        return;
+    }
+
+    out << settings_json.dump(4);
+    APP_LOG(Log::LogLevel::INFO, "Settings saved: gamename='%s'", gamename.c_str());
 }

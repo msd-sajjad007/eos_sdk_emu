@@ -24,6 +24,16 @@
 #include "network.h"
 #include "network_proto.pb.h"
 
+// [FIX] Forward-declare dependent SDK types before they are used as a base
+// class or as a template argument below.  The full definitions live in
+// eossdk_lobbydetails.h / eossdk_lobbysearch.h which cannot be included here
+// without creating circular-include cycles.
+namespace sdk
+{
+    class EOSSDK_LobbyDetails;
+    class EOSSDK_LobbySearch;
+}
+
 namespace sdk
 {
 

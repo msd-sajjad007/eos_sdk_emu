@@ -37,7 +37,13 @@ struct Settings
     uint16_t    p2p_port;
     uint16_t    max_p2p_ports_tried;
 
+    // [FIX] Members referenced by eos_client_api.cpp
+    bool        disable_online_networking;
+    std::string gamename;
+
     static Settings& Inst();
 
     void load_settings();
+    // [FIX] save_settings() declared here; persists gamename back to JSON
+    void save_settings();
 };
