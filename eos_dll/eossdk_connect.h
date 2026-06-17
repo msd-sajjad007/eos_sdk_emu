@@ -27,8 +27,8 @@ namespace sdk
 {
     struct user_state_t
     {
-        bool connected;    // Peer is connected
-        bool authentified; // We have peer infos
+        bool connected;
+        bool authentified;
         std::chrono::steady_clock::time_point last_infos;
         Connect_Infos_pb infos;
     };
@@ -42,7 +42,7 @@ namespace sdk
         std::string _device_id;
 
     public:
-        std::string _username; // This is used for leaderboards thing ?
+        std::string _username;
 
         nlohmann::fifo_map<EOS_ProductUserId, user_state_t> _users;
 
@@ -84,14 +84,9 @@ namespace sdk
             return _users.end();
         }
 
-        //void add_session(EOS_ProductUserId session_id, std::string const& session_name);
-        //void remove_session(EOS_ProductUserId session_id, std::string const& session_name);
-
-        // Send Network messages
         bool send_connect_infos_request(Network::peer_t const& peerid, Connect_Request_Info_pb* req);
         bool send_connect_infos(Network::peer_t const& peerid, Connect_Infos_pb* infos);
 
-        // Receive Network messages
         bool on_peer_connect(Network_Message_pb const& msg, Network_Peer_Connect_pb const& peer);
         bool on_peer_disconnect(Network_Message_pb const& msg, Network_Peer_Disconnect_pb const& peer);
         bool on_connect_infos_request(Network_Message_pb const& msg, Connect_Request_Info_pb const& req);
@@ -120,10 +115,14 @@ namespace sdk
         void RemoveNotifyAuthExpiration(EOS_NotificationId InId);
         EOS_NotificationId AddNotifyLoginStatusChanged(const EOS_Connect_AddNotifyLoginStatusChangedOptions* Options, void* ClientData, const EOS_Connect_OnLoginStatusChangedCallback Notification);
         void RemoveNotifyLoginStatusChanged(EOS_NotificationId InId);
-        uint32_t GetProductUserExternalAccountCount(const EOS_Connect_GetProductUserExternalAccountCountOptions * Options);
-        EOS_EResult CopyProductUserExternalAccountByIndex(const EOS_Connect_CopyProductUserExternalAccountByIndexOptions * Options, EOS_Connect_ExternalAccountInfo * *OutExternalAccountInfo);
-        EOS_EResult CopyProductUserExternalAccountByAccountType(const EOS_Connect_CopyProductUserExternalAccountByAccountTypeOptions * Options, EOS_Connect_ExternalAccountInfo * *OutExternalAccountInfo);
-        EOS_EResult CopyProductUserExternalAccountByAccountId(const EOS_Connect_CopyProductUserExternalAccountByAccountIdOptions * Options, EOS_Connect_ExternalAccountInfo * *OutExternalAccountInfo);
-        EOS_EResult CopyProductUserInfo(const EOS_Connect_CopyProductUserInfoOptions * Options, EOS_Connect_ExternalAccountInfo * *OutExternalAccountInfo);
+        uint32_t GetProductUserExternalAccountCount(const EOS_Connect_GetProductUserExternalAccountCountOptions* Options);
+        EOS_EResult CopyProductUserExternalAccountByIndex(const EOS_Connect_CopyProductUserExternalAccountByIndexOptions* Options, EOS_Connect_ExternalAccountInfo** OutExternalAccountInfo);
+        EOS_EResult CopyProductUserExternalAccountByAccountType(const EOS_Connect_CopyProductUserExternalAccountByAccountTypeOptions* Options, EOS_Connect_ExternalAccountInfo** OutExternalAccountInfo);
+        EOS_EResult CopyProductUserExternalAccountByAccountId(const EOS_Connect_CopyProductUserExternalAccountByAccountIdOptions* Options, EOS_Connect_ExternalAccountInfo** OutExternalAccountInfo);
+        EOS_EResult CopyProductUserInfo(const EOS_Connect_CopyProductUserInfoOptions* Options, EOS_Connect_ExternalAccountInfo** OutExternalAccountInfo);
+
+        // SDK 1.14+ identity token APIs
+        EOS_EResult CopyIdToken(const EOS_Connect_CopyIdTokenOptions* Options, EOS_Connect_IdToken** OutIdToken);
+        void VerifyIdToken(const EOS_Connect_VerifyIdTokenOptions* Options, void* ClientData, const EOS_Connect_OnVerifyIdTokenCallback CompletionDelegate);
     };
 }

@@ -64,5 +64,9 @@ namespace sdk
         EOS_NotificationId AddNotifyLoginStatusChangedOld(void* ClientData, const EOS_Auth_OnLoginStatusChangedCallback Notification);
         EOS_NotificationId AddNotifyLoginStatusChanged(const EOS_Auth_AddNotifyLoginStatusChangedOptions* Options, void* ClientData, const EOS_Auth_OnLoginStatusChangedCallback Notification);
         void RemoveNotifyLoginStatusChanged(EOS_NotificationId InId);
+
+        // SDK 1.14+ identity token APIs
+        EOS_EResult CopyIdToken(const EOS_Auth_CopyIdTokenOptions* Options, EOS_Auth_IdToken** OutIdToken);
+        void VerifyIdToken(const EOS_Auth_VerifyIdTokenOptions* Options, void* ClientData, const EOS_Auth_OnVerifyIdTokenCallback CompletionDelegate);
     };
 }
