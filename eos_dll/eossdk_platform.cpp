@@ -43,7 +43,9 @@ EOSSDK_Platform::EOSSDK_Platform():
     _playerdatastorage(nullptr),
     _achievements     (nullptr),
     _stats            (nullptr),
-    _leaderboards     (nullptr)
+    _leaderboards     (nullptr),
+    _custominvites    (nullptr),
+    _sanctions        (nullptr)
 {
     _cb_manager        = new Callback_Manager;
     _network           = new Network;
@@ -177,6 +179,8 @@ void EOSSDK_Platform::Init(const EOS_Platform_Options* Options)
         _stats             = new EOSSDK_Stats;
         _titlestorage      = new EOSSDK_TitleStorage;
         _leaderboards      = new EOSSDK_Leaderboards;
+        _custominvites     = new EOSSDK_CustomInvites;
+        _sanctions         = new EOSSDK_Sanctions;
 
         _presence->setup_myself();
         _userinfo->setup_myself();
@@ -191,6 +195,8 @@ void EOSSDK_Platform::Release()
 
     if (_platform_init)
     {
+        delete _sanctions;
+        delete _custominvites;
         delete _leaderboards;
         delete _titlestorage;
         delete _stats;
@@ -208,14 +214,29 @@ void EOSSDK_Platform::Release()
         delete _auth;
         delete _metrics;
 
+        _sanctions         = nullptr;
+        _custominvites     = nullptr;
+        _leaderboards      = nullptr;
+        _titlestorage      = nullptr;
+        _stats             = nullptr;
+        _achievements      = nullptr;
+        _playerdatastorage = nullptr;
+        _p2p               = nullptr;
+        _userinfo          = nullptr;
+        _lobby             = nullptr;
+        _sessions          = nullptr;
+        _presence          = nullptr;
+        _friends           = nullptr;
+        _ui                = nullptr;
+        _ecom              = nullptr;
+        _connect           = nullptr;
+        _auth              = nullptr;
+        _metrics           = nullptr;
+
         _platform_init = false;
     }
 }
 
-/**
- * Notify the platform instance to do work. This function must be called frequently in order for the services provided by the SDK to properly
- * function. For tick-based applications, it is usually desireable to call this once per-tick.
- */
 void EOSSDK_Platform::Tick()
 {
     GLOBAL_LOCK();
@@ -223,235 +244,114 @@ void EOSSDK_Platform::Tick()
     GetCB_Manager().tick();
 }
 
-/**
- * Get a handle to the Metrics Interface.
- * @return EOS_HMetrics handle
- *
- * @see eos_metrics.h
- * @see eos_metrics_types.h
- */
 EOS_HMetrics           EOSSDK_Platform::GetMetricsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HMetrics>(_metrics);
 }
 
-/**
- * Get a handle to the Auth Interface.
- * @return EOS_HAuth handle
- *
- * @see eos_auth.h
- * @see eos_auth_types.h
- */
 EOS_HAuth              EOSSDK_Platform::GetAuthInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HAuth>(_auth);
 }
 
-/**
- * Get a handle to the Connect Interface.
- * @return EOS_HConnect handle
- *
- * @see eos_connect.h
- * @see eos_connect_types.h
- */
 EOS_HConnect           EOSSDK_Platform::GetConnectInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HConnect>(_connect);
 }
 
-/**
- * Get a handle to the Ecom Interface.
- * @return EOS_HEcom handle
- *
- * @see eos_ecom.h
- * @see eos_ecom_types.h
- */
 EOS_HEcom              EOSSDK_Platform::GetEcomInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HEcom>(_ecom);
 }
 
-/**
- * Get a handle to the UI Interface.
- * @return EOS_HUI handle
- *
- * @see eos_ui.h
- * @see eos_ui_types.h
- */
 EOS_HUI                EOSSDK_Platform::GetUIInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HUI>(_ui);
 }
 
-/**
- * Get a handle to the Friends Interface.
- * @return EOS_HFriends handle
- *
- * @see eos_friends.h
- * @see eos_friends_types.h
- */
 EOS_HFriends           EOSSDK_Platform::GetFriendsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HFriends>(_friends);
 }
 
-/**
- * Get a handle to the Presence Interface.
- * @return EOS_HPresence handle
- *
- * @see eos_presence.h
- * @see eos_presence_types.h
- */
 EOS_HPresence          EOSSDK_Platform::GetPresenceInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HPresence>(_presence);
 }
 
-
-/**
- * Get a handle to the Sessions Interface.
- * @return EOS_HSessions handle
- *
- * @see eos_sessions.h
- * @see eos_sessions_types.h
- */
 EOS_HSessions          EOSSDK_Platform::GetSessionsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HSessions>(_sessions);
 }
 
-/**
- * Get a handle to the Lobby Interface.
- * @return EOS_HLobby handle
- *
- * @see eos_lobby.h
- * @see eos_lobby_types.h
- */
 EOS_HLobby             EOSSDK_Platform::GetLobbyInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HLobby>(_lobby);
 }
 
-/**
- * Get a handle to the UserInfo Interface.
- * @return EOS_HUserInfo handle
- *
- * @see eos_userinfo.h
- * @see eos_userinfo_types.h
- */
 EOS_HUserInfo          EOSSDK_Platform::GetUserInfoInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HUserInfo>(_userinfo);
 }
 
-/**
- * Get a handle to the Peer-to-Peer Networking Interface.
- * @return EOS_HP2P handle
- *
- * @see eos_p2p.h
- * @see eos_p2p_types.h
- */
 EOS_HP2P               EOSSDK_Platform::GetP2PInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HP2P>(_p2p);
 }
 
-/**
- * Get a handle to the PlayerDataStorage Interface.
- * @return EOS_HPlayerDataStorage handle
- *
- * @see eos_playerdatastorage.h
- * @see eos_playerdatastorage_types.h
- */
 EOS_HPlayerDataStorage EOSSDK_Platform::GetPlayerDataStorageInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HPlayerDataStorage>(_playerdatastorage);
 }
 
-/**
- * Get a handle to the TitleStorage Interface.
- * @return EOS_HTitleStorage handle
- *
- * @see eos_titlestorage.h
- * @see eos_titlestorage_types.h
- */
 EOS_HTitleStorage EOSSDK_Platform::GetTitleStorageInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HTitleStorage>(_titlestorage);
 }
 
-/**
- * Get a handle to the Achievements Interface.
- * @return EOS_HAchievements handle
- *
- * @see eos_achievements.h
- * @see eos_achievements_types.h
- */
 EOS_HAchievements      EOSSDK_Platform::GetAchievementsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HAchievements>(_achievements);
 }
 
-/**
- * Get a handle to the Stats Interface.
- * @return EOS_HStats handle
- *
- * @see eos_stats.h
- * @see eos_stats_types.h
- */
 EOS_HStats             EOSSDK_Platform::GetStatsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HStats>(_stats);
 }
 
-/**
- * Get a handle to the Leaderboards Interface.
- * @return EOS_HLeaderboards handle
- *
- * @see eos_leaderboards.h
- * @see eos_leaderboards_types.h
- */
 EOS_HLeaderboards      EOSSDK_Platform::GetLeaderboardsInterface()
 {
     GLOBAL_LOCK();
     return reinterpret_cast<EOS_HLeaderboards>(_leaderboards);
 }
 
-/**
- * Get the active country code that the SDK will send to services which require it.
- * This only will return the value set as the override otherwise EOS_NotFound is returned.
- * This is not currently used for anything internally.
- *
- * @param LocalUserId The account to use for lookup if no override exists.
- * @param OutBuffer The buffer into which the character data should be written.  The buffer must be long enough to hold a string of EOS_COUNTRYCODE_MAX_LENGTH.
- * @param InOutBufferLength The size of the OutBuffer in characters.
- *                          The input buffer should include enough space to be null-terminated.
- *                          When the function returns, this parameter will be filled with the length of the string copied into OutBuffer.
- *
- * @return An EOS_EResult that indicates whether the active country code string was copied into the OutBuffer.
- *         EOS_Success if the information is available and passed out in OutBuffer
- *         EOS_InvalidParameters if you pass a null pointer for the out parameter
- *         EOS_NotFound if there is neither an override nor an available country code for the user.
- *         EOS_LimitExceeded - The OutBuffer is not large enough to receive the country code string. InOutBufferLength contains the required minimum length to perform the operation successfully.
- *
- * @see eos_ecom.h
- * @see EOS_COUNTRYCODE_MAX_LENGTH
- */
+EOS_HCustomInvites     EOSSDK_Platform::GetCustomInvitesInterface()
+{
+    GLOBAL_LOCK();
+    return reinterpret_cast<EOS_HCustomInvites>(_custominvites);
+}
+
+EOS_HSanctions         EOSSDK_Platform::GetSanctionsInterface()
+{
+    GLOBAL_LOCK();
+    return reinterpret_cast<EOS_HSanctions>(_sanctions);
+}
+
 EOS_EResult EOSSDK_Platform::GetActiveCountryCode(EOS_EpicAccountId LocalUserId, char* OutBuffer, int32_t* InOutBufferLength)
 {
     TRACE_FUNC();
@@ -467,26 +367,6 @@ EOS_EResult EOSSDK_Platform::GetActiveCountryCode(EOS_EpicAccountId LocalUserId,
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Get the active locale code that the SDK will send to services which require it.
- * This returns the override value otherwise it will use the locale code of the given user.
- * This is used for localization. This follows ISO 639.
- *
- * @param LocalUserId The account to use for lookup if no override exists.
- * @param OutBuffer The buffer into which the character data should be written.  The buffer must be long enough to hold a string of EOS_LOCALECODE_MAX_LEN.
- * @param InOutBufferLength The size of the OutBuffer in characters.
- *                          The input buffer should include enough space to be null-terminated.
- *                          When the function returns, this parameter will be filled with the length of the string copied into OutBuffer.
- *
- * @return An EOS_EResult that indicates whether the active locale code string was copied into the OutBuffer.
- *         EOS_Success if the information is available and passed out in OutBuffer
- *         EOS_InvalidParameters if you pass a null pointer for the out parameter
- *         EOS_NotFound if there is neither an override nor an available locale code for the user.
- *         EOS_LimitExceeded - The OutBuffer is not large enough to receive the locale code string. InOutBufferLength contains the required minimum length to perform the operation successfully.
- *
- * @see eos_ecom.h
- * @see EOS_LOCALECODE_MAX_LEN
- */
 EOS_EResult EOSSDK_Platform::GetActiveLocaleCode(EOS_EpicAccountId LocalUserId, char* OutBuffer, int32_t* InOutBufferLength)
 {
     TRACE_FUNC();
@@ -502,23 +382,6 @@ EOS_EResult EOSSDK_Platform::GetActiveLocaleCode(EOS_EpicAccountId LocalUserId, 
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Get the override country code that the SDK will send to services which require it.
- * This is currently used for determining pricing.
- *
- * @param OutBuffer The buffer into which the character data should be written.  The buffer must be long enough to hold a string of EOS_COUNTRYCODE_MAX_LEN.
- * @param InOutBufferLength The size of the OutBuffer in characters.
- *                          The input buffer should include enough space to be null-terminated.
- *                          When the function returns, this parameter will be filled with the length of the string copied into OutBuffer.
- *
- * @return An EOS_EResult that indicates whether the override country code string was copied into the OutBuffer.
- *         EOS_Success if the information is available and passed out in OutBuffer
- *         EOS_InvalidParameters if you pass a null pointer for the out parameter
- *         EOS_LimitExceeded - The OutBuffer is not large enough to receive the country code string. InOutBufferLength contains the required minimum length to perform the operation successfully.
- *
- * @see eos_ecom.h
- * @see EOS_COUNTRYCODE_MAX_LEN
- */
 EOS_EResult EOSSDK_Platform::GetOverrideCountryCode(char* OutBuffer, int32_t* InOutBufferLength)
 {
     TRACE_FUNC();
@@ -526,9 +389,9 @@ EOS_EResult EOSSDK_Platform::GetOverrideCountryCode(char* OutBuffer, int32_t* In
     if (OutBuffer == nullptr || InOutBufferLength == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    if (*InOutBufferLength < (_override_country_code.length() + 1))
+    if (*InOutBufferLength < (int32_t)(_override_country_code.length() + 1))
     {
-        *InOutBufferLength = _override_country_code.length() + 1;
+        *InOutBufferLength = (int32_t)(_override_country_code.length() + 1);
         return EOS_EResult::EOS_LimitExceeded;
     }
 
@@ -537,23 +400,6 @@ EOS_EResult EOSSDK_Platform::GetOverrideCountryCode(char* OutBuffer, int32_t* In
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Get the override locale code that the SDK will send to services which require it.
- * This is used for localization. This follows ISO 639.
- *
- * @param OutBuffer The buffer into which the character data should be written.  The buffer must be long enough to hold a string of EOS_LOCALECODE_MAX_LEN.
- * @param InOutBufferLength The size of the OutBuffer in characters.
- *                          The input buffer should include enough space to be null-terminated.
- *                          When the function returns, this parameter will be filled with the length of the string copied into OutBuffer.
- *
- * @return An EOS_EResult that indicates whether the override locale code string was copied into the OutBuffer.
- *         EOS_Success if the information is available and passed out in OutBuffer
- *         EOS_InvalidParameters if you pass a null pointer for the out parameter
- *         EOS_LimitExceeded - The OutBuffer is not large enough to receive the locale code string. InOutBufferLength contains the required minimum length to perform the operation successfully.
- *
- * @see eos_ecom.h
- * @see EOS_LOCALECODE_MAX_LEN
- */
 EOS_EResult EOSSDK_Platform::GetOverrideLocaleCode(char* OutBuffer, int32_t* InOutBufferLength)
 {
     TRACE_FUNC();
@@ -561,9 +407,9 @@ EOS_EResult EOSSDK_Platform::GetOverrideLocaleCode(char* OutBuffer, int32_t* InO
     if (OutBuffer == nullptr || InOutBufferLength == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    if (*InOutBufferLength < (_override_locale_code.length() + 1))
+    if (*InOutBufferLength < (int32_t)(_override_locale_code.length() + 1))
     {
-        *InOutBufferLength = _override_locale_code.length() + 1;
+        *InOutBufferLength = (int32_t)(_override_locale_code.length() + 1);
         return EOS_EResult::EOS_LimitExceeded;
     }
 
@@ -572,17 +418,6 @@ EOS_EResult EOSSDK_Platform::GetOverrideLocaleCode(char* OutBuffer, int32_t* InO
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Set the override country code that the SDK will send to services which require it.
- * This is currently used for determining accurate pricing.
- *
- * @return An EOS_EResult that indicates whether the override country code string was saved.
- *         EOS_Success if the country code was overridden
- *         EOS_InvalidParameters if you pass an invalid country code
- *
- * @see eos_ecom.h
- * @see EOS_COUNTRYCODE_MAX_LEN
- */
 EOS_EResult EOSSDK_Platform::SetOverrideCountryCode(const char* NewCountryCode)
 {
     TRACE_FUNC();
@@ -591,23 +426,11 @@ EOS_EResult EOSSDK_Platform::SetOverrideCountryCode(const char* NewCountryCode)
         return EOS_EResult::EOS_InvalidParameters;
 
     APP_LOG(Log::LogLevel::DEBUG, "%s", NewCountryCode);
-
     _override_country_code = NewCountryCode;
 
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Set the override locale code that the SDK will send to services which require it.
- * This is used for localization. This follows ISO 639.
- *
- * @return An EOS_EResult that indicates whether the override locale code string was saved.
- *         EOS_Success if the locale code was overridden
- *         EOS_InvalidParameters if you pass an invalid locale code
- *
- * @see eos_ecom.h
- * @see EOS_LOCALECODE_MAX_LEN
- */
 EOS_EResult EOSSDK_Platform::SetOverrideLocaleCode(const char* NewLocaleCode)
 {
     TRACE_FUNC();
@@ -616,25 +439,14 @@ EOS_EResult EOSSDK_Platform::SetOverrideLocaleCode(const char* NewLocaleCode)
         return EOS_EResult::EOS_InvalidParameters;
 
     APP_LOG(Log::LogLevel::DEBUG, "%s", NewLocaleCode);
-
     _override_locale_code = NewLocaleCode;
 
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * Checks if the app was launched through the Epic Launcher, and relaunches it through the Epic Launcher if it wasn't.
- *
- * @return An EOS_EResult is returned to indicate success or an error.
- *
- * EOS_Success is returned if the app is being restarted. You should quit your process as soon as possible.
- * EOS_NoChange is returned if the app was already launched through the Epic Launcher, and no action needs to be taken.
- * EOS_UnexpectedError is returned if the LauncherCheck module failed to initialize, or the module tried and failed to restart the app.
- */
 EOS_EResult EOSSDK_Platform::CheckForLauncherAndRestart()
 {
     TRACE_FUNC();
-
     return EOS_EResult::EOS_NoChange;
 }
 

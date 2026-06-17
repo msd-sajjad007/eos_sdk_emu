@@ -40,6 +40,8 @@
 #include "eossdk_stats.h"
 #include "eossdk_titlestorage.h"
 #include "eossdk_leaderboards.h"
+#include "eossdk_custominvites.h"
+#include "eossdk_sanctions.h"
 
 namespace sdk
 {
@@ -84,6 +86,8 @@ namespace sdk
         EOSSDK_Stats             *_stats;
         EOSSDK_TitleStorage      *_titlestorage;
         EOSSDK_Leaderboards      *_leaderboards;
+        EOSSDK_CustomInvites     *_custominvites;
+        EOSSDK_Sanctions         *_sanctions;
 
         ~EOSSDK_Platform();
 
@@ -108,6 +112,8 @@ namespace sdk
         EOS_HAchievements      GetAchievementsInterface();
         EOS_HStats             GetStatsInterface();
         EOS_HLeaderboards      GetLeaderboardsInterface();
+        EOS_HCustomInvites     GetCustomInvitesInterface();
+        EOS_HSanctions         GetSanctionsInterface();
 
         EOS_EResult GetActiveCountryCode(EOS_EpicAccountId LocalUserId, char* OutBuffer, int32_t* InOutBufferLength);
         EOS_EResult GetActiveLocaleCode(EOS_EpicAccountId LocalUserId, char* OutBuffer, int32_t* InOutBufferLength);
@@ -139,3 +145,5 @@ inline sdk::EOSSDK_PlayerDataStorage& GetEOS_PlayerDataStorage() { return *GetEO
 inline sdk::EOSSDK_Achievements&      GetEOS_Achievements     () { return *GetEOS_Platform()._achievements;      }
 inline sdk::EOSSDK_Stats&             GetEOS_Stats            () { return *GetEOS_Platform()._stats;             }
 inline sdk::EOSSDK_Leaderboards&      GetEOS_Leaderboards     () { return *GetEOS_Platform()._leaderboards;      }
+inline sdk::EOSSDK_CustomInvites&     GetEOS_CustomInvites    () { return *GetEOS_Platform()._custominvites;     }
+inline sdk::EOSSDK_Sanctions&         GetEOS_Sanctions        () { return *GetEOS_Platform()._sanctions;         }
