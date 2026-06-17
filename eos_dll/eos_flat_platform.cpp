@@ -177,6 +177,24 @@ EOS_DECLARE_FUNC(EOS_HLeaderboards) EOS_Platform_GetLeaderboardsInterface(EOS_HP
     return pInst->GetLeaderboardsInterface();
 }
 
+EOS_DECLARE_FUNC(EOS_HCustomInvites) EOS_Platform_GetCustomInvitesInterface(EOS_HPlatform Handle)
+{
+    if (Handle == nullptr)
+        return nullptr;
+
+    auto pInst = reinterpret_cast<EOSSDK_Platform*>(Handle);
+    return pInst->GetCustomInvitesInterface();
+}
+
+EOS_DECLARE_FUNC(EOS_HSanctions) EOS_Platform_GetSanctionsInterface(EOS_HPlatform Handle)
+{
+    if (Handle == nullptr)
+        return nullptr;
+
+    auto pInst = reinterpret_cast<EOSSDK_Platform*>(Handle);
+    return pInst->GetSanctionsInterface();
+}
+
 EOS_DECLARE_FUNC(EOS_EResult) EOS_Platform_GetActiveCountryCode(EOS_HPlatform Handle, EOS_EpicAccountId LocalUserId, char* OutBuffer, int32_t* InOutBufferLength)
 {
     if (Handle == nullptr)
@@ -277,4 +295,3 @@ EOS_DECLARE_FUNC(void) EOS_Platform_Release(EOS_HPlatform Handle)
 
     pInst->Release();
 }
-
