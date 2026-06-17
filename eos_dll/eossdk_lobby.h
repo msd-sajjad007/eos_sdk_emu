@@ -23,14 +23,14 @@
 #include "callback_manager.h"
 #include "network.h"
 #include "network_proto.pb.h"
-// Full class definition needed because lobby_t inherits from EOSSDK_LobbyDetails.
-// eossdk_lobbydetails.h also defines lobby_state_t which is used below.
+// Full class definitions for lobby_state_t and EOSSDK_LobbyDetails.
+// lobby_t inherits EOSSDK_LobbyDetails so the complete type must be visible.
 #include "eossdk_lobbydetails.h"
 
 namespace sdk
 {
 
-// Forward-declare EOSSDK_LobbySearch (pointer/reference only, no inheritance).
+// Forward-declare EOSSDK_LobbySearch (used by pointer only, no inheritance).
 class EOSSDK_LobbySearch;
 
 struct lobby_invite_t
@@ -39,9 +39,9 @@ struct lobby_invite_t
     Lobby_Infos_pb infos;
 };
 
+// lobby_t inherits _state from EOSSDK_LobbyDetails; do NOT redeclare it here.
 struct lobby_t : public EOSSDK_LobbyDetails
 {
-    lobby_state_t _state;
 };
 
 struct lobby_join_t

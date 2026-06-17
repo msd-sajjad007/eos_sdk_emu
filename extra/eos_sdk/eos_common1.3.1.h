@@ -20,4 +20,9 @@ EOS_STRUCT(EOS_DeviceInfo001, (
 	const char* OS;
 ));
 
+// Alias so pre-1.5 headers (eos_auth_types1.3.1.h) can use EOS_DeviceInfo directly.
+#ifndef EOS_DeviceInfo
+typedef EOS_DeviceInfo001 EOS_DeviceInfo;
+#endif
+
 #pragma pack(pop)

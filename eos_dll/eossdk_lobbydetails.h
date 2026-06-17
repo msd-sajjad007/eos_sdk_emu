@@ -25,7 +25,18 @@
 namespace sdk
 {
 
-struct lobby_state_t;
+// Full definition of lobby_state_t must live here because EOSSDK_LobbyDetails
+// contains it as a value member (_state). eossdk_lobby.h includes this header
+// so lobby_t (which inherits EOSSDK_LobbyDetails) also sees the full type.
+struct lobby_state_t
+{
+    enum {
+        none,
+        created,
+        joined,
+    } state;
+    Lobby_Infos_pb infos;
+};
 
 class EOSSDK_LobbyDetails
 {
