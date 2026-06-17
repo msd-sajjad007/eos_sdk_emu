@@ -1,6 +1,8 @@
 // Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
+#include "eos_common.h"
+
 #pragma pack(push, 8)
 
 /** The most recent version of the EOS_Auth_Token struct. */
