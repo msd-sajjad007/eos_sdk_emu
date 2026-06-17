@@ -7,19 +7,11 @@
  */
 
 #include "eossdk_lobby.h"
-#include "eossdk_platform.h"
-#include "eos_client_api.h"
 #include "settings.h"
 
 namespace sdk
 {
 
-/**
- * EOS_Lobby_GetRTCRoomName
- * Writes the RTC room name string for a lobby into OutBuffer.
- * We return a deterministic fake name based on the lobby id so the game
- * can store it without crashing; the RTC subsystem itself is not emulated.
- */
 EOS_EResult EOSSDK_Lobby::GetRTCRoomName(
     const EOS_Lobby_GetRTCRoomNameOptions* Options,
     char*     OutBuffer,
@@ -33,9 +25,7 @@ EOS_EResult EOSSDK_Lobby::GetRTCRoomName(
     if (Options->LobbyId == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    // Build a deterministic name: "RTC_<lobby_id>"
     std::string room_name = std::string("RTC_") + Options->LobbyId;
-
     uint32_t needed = static_cast<uint32_t>(room_name.size()) + 1u;
 
     if (OutBuffer == nullptr)
@@ -56,12 +46,6 @@ EOS_EResult EOSSDK_Lobby::GetRTCRoomName(
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * EOS_Lobby_IsRTCRoomConnected
- * Always reports NOT connected — the emulator has no real RTC.
- * Returns EOS_Success so callers do not treat it as an error; they will
- * simply see bOutIsConnected == EOS_FALSE and fall back gracefully.
- */
 EOS_EResult EOSSDK_Lobby::IsRTCRoomConnected(
     const EOS_Lobby_IsRTCRoomConnectedOptions* Options,
     EOS_Bool* bOutIsConnected)
@@ -74,20 +58,13 @@ EOS_EResult EOSSDK_Lobby::IsRTCRoomConnected(
     if (Options->LobbyId == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    // Lobby must exist
-    if (get_lobby_by_id(Options->LobbyId) == nullptr)
+    if (get_lobby_by_id(std::string(Options->LobbyId)) == nullptr)
         return EOS_EResult::EOS_NotFound;
 
     *bOutIsConnected = EOS_FALSE;
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * EOS_Lobby_AddNotifyRTCRoomConnectionChanged
- * Registers a notification slot for future RTC connection-change events.
- * Because we never actually connect to RTC the callback will never fire,
- * but the handle must be non-zero so RemoveNotify does not assert.
- */
 EOS_NotificationId EOSSDK_Lobby::AddNotifyRTCRoomConnectionChanged(
     const EOS_Lobby_AddNotifyRTCRoomConnectionChangedOptions* Options,
     void* ClientData,
@@ -102,14 +79,9 @@ EOS_NotificationId EOSSDK_Lobby::AddNotifyRTCRoomConnectionChanged(
     EOS_Lobby_RTCRoomConnectionChangedCallbackInfo& rcci =
         res->CreateCallback<EOS_Lobby_RTCRoomConnectionChangedCallbackInfo>((CallbackFunc)NotificationFn);
 
-    rcci.ClientData      = ClientData;
-    rcci.bIsConnected    = EOS_FALSE;
-    rcci.DisconnectReason = EOS_EResult::EOS_NoConnection;
-    {
-        char* str = new char[max_accountid_length];
-        *str = '\0';
-        rcci.LobbyId = str;
-    }
+    rcci.ClientData   = ClientData;
+    rcci.LobbyId      = "";
+    rcci.bIsConnected = EOS_FALSE;
 
     return GetCB_Manager().add_notification(this, res);
 }

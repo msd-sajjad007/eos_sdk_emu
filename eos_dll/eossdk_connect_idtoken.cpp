@@ -6,21 +6,11 @@
  */
 
 #include "eossdk_connect.h"
-#include "eossdk_platform.h"
-#include "eos_client_api.h"
 #include "settings.h"
 
 namespace sdk
 {
 
-/**
- * EOS_Connect_CopyIdToken
- *
- * Produces a minimal EOS_Connect_IdToken keyed to the local ProductUserId.
- * The JsonWebToken field is a placeholder that is structurally a valid
- * (but unsigned) JWT so games that parse header/payload do not crash.
- * The caller must release with EOS_Connect_IdToken_Release.
- */
 EOS_EResult EOSSDK_Connect::CopyIdToken(
     const EOS_Connect_CopyIdTokenOptions* Options,
     EOS_Connect_IdToken**                 OutIdToken)
@@ -39,7 +29,6 @@ EOS_EResult EOSSDK_Connect::CopyIdToken(
     if (it == get_end_users())
         return EOS_EResult::EOS_NotFound;
 
-    // Same deterministic fake JWT used by Auth::CopyIdToken
     static const char* k_fake_jwt =
         "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"
         "."
@@ -48,8 +37,8 @@ EOS_EResult EOSSDK_Connect::CopyIdToken(
         "emulator_signature";
 
     EOS_Connect_IdToken* token = new EOS_Connect_IdToken;
-    token->ApiVersion   = EOS_CONNECT_IDTOKEN_API_LATEST;
-    token->ProductUserId = Options->LocalUserId;  // caller owns lifetime
+    token->ApiVersion    = EOS_CONNECT_IDTOKEN_API_LATEST;
+    token->ProductUserId = Options->LocalUserId;
 
     char* jwt_str = new char[strlen(k_fake_jwt) + 1];
     strcpy(jwt_str, k_fake_jwt);
@@ -59,16 +48,10 @@ EOS_EResult EOSSDK_Connect::CopyIdToken(
     return EOS_EResult::EOS_Success;
 }
 
-/**
- * EOS_Connect_VerifyIdToken
- *
- * Always fires EOS_Success.  For LAN / offline use the emulator trusts its
- * own tokens unconditionally — the same policy as Auth::VerifyIdToken.
- */
 void EOSSDK_Connect::VerifyIdToken(
-    const EOS_Connect_VerifyIdTokenOptions* Options,
-    void*                                   ClientData,
-    const EOS_Connect_OnVerifyIdTokenCallback CompletionDelegate)
+    const EOS_Connect_VerifyIdTokenOptions*    Options,
+    void*                                      ClientData,
+    const EOS_Connect_OnVerifyIdTokenCallback  CompletionDelegate)
 {
     TRACE_FUNC();
 
@@ -87,10 +70,9 @@ void EOSSDK_Connect::VerifyIdToken(
     }
     else
     {
-        vitci.ResultCode         = EOS_EResult::EOS_Success;
-        vitci.ProductUserId      = Options->IdToken->ProductUserId;
+        vitci.ResultCode          = EOS_EResult::EOS_Success;
+        vitci.ProductUserId       = Options->IdToken->ProductUserId;
         vitci.bIsApplicationOwner = EOS_TRUE;
-        // String fields: static literals, valid for callback duration
         vitci.Platform            = "emulator";
         vitci.DeviceType          = "PC";
         vitci.ClientId            = "eos_emulator";
