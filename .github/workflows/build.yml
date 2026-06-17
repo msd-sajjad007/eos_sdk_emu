@@ -44,6 +44,10 @@ jobs:
             Pop-Location
           }
 
+      - name: Pre-install pkgconf (fixes MSYS2 pkgconf 404 in vcpkg abseil build)
+        shell: cmd
+        run: choco install pkgconfiglite -y --no-progress
+
       - name: Pre-download nlohmann-json tarball into vcpkg cache
         shell: pwsh
         run: |
