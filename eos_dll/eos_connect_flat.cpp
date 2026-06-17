@@ -102,7 +102,8 @@ EOS_DECLARE_FUNC(void) EOS_Connect_QueryProductUserIdMappings(EOS_HConnect Handl
     pInst->QueryProductUserIdMappings(Options, ClientData, CompletionDelegate);
 }
 
-EOS_DECLARE_FUNC(EOS_ProductUserId) EOS_Connect_GetExternalAccountMapping(EOS_HConnect Handle, const EOS_Connect_GetExternalAccountMappingOptions* Options)
+// Fix: use EOS_Connect_GetExternalAccountMappingsOptions (plural, matching eos_connect.h line 224)
+EOS_DECLARE_FUNC(EOS_ProductUserId) EOS_Connect_GetExternalAccountMapping(EOS_HConnect Handle, const EOS_Connect_GetExternalAccountMappingsOptions* Options)
 {
     if (Handle == nullptr)
         return nullptr;
