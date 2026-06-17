@@ -48,6 +48,15 @@ EOS_DECLARE_FUNC(void) EOS_Lobby_JoinLobby(EOS_HLobby Handle, const EOS_Lobby_Jo
     pInst->JoinLobby(Options, ClientData, CompletionDelegate);
 }
 
+EOS_DECLARE_FUNC(void) EOS_Lobby_JoinLobbyById(EOS_HLobby Handle, const EOS_Lobby_JoinLobbyByIdOptions* Options, void* ClientData, const EOS_Lobby_OnJoinLobbyByIdCallback CompletionDelegate)
+{
+    if (Handle == nullptr)
+        return;
+
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    pInst->JoinLobbyById(Options, ClientData, CompletionDelegate);
+}
+
 EOS_DECLARE_FUNC(void) EOS_Lobby_LeaveLobby(EOS_HLobby Handle, const EOS_Lobby_LeaveLobbyOptions* Options, void* ClientData, const EOS_Lobby_OnLeaveLobbyCallback CompletionDelegate)
 {
     if (Handle == nullptr)
@@ -144,7 +153,88 @@ EOS_DECLARE_FUNC(void) EOS_Lobby_RemoveNotifyLobbyMemberStatusReceived(EOS_HLobb
         return;
 
     auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
-    return pInst->RemoveNotifyLobbyMemberStatusReceived(InId);
+    pInst->RemoveNotifyLobbyMemberStatusReceived(InId);
+}
+
+EOS_DECLARE_FUNC(EOS_NotificationId) EOS_Lobby_AddNotifyLobbyInviteReceived(EOS_HLobby Handle, const EOS_Lobby_AddNotifyLobbyInviteReceivedOptions* Options, void* ClientData, const EOS_Lobby_OnLobbyInviteReceivedCallback NotificationFn)
+{
+    if (Handle == nullptr)
+        return EOS_INVALID_NOTIFICATIONID;
+
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    return pInst->AddNotifyLobbyInviteReceived(Options, ClientData, NotificationFn);
+}
+
+EOS_DECLARE_FUNC(void) EOS_Lobby_RemoveNotifyLobbyInviteReceived(EOS_HLobby Handle, EOS_NotificationId InId)
+{
+    if (Handle == nullptr)
+        return;
+
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    pInst->RemoveNotifyLobbyInviteReceived(InId);
+}
+
+EOS_DECLARE_FUNC(EOS_NotificationId) EOS_Lobby_AddNotifyLobbyInviteAccepted(EOS_HLobby Handle, const EOS_Lobby_AddNotifyLobbyInviteAcceptedOptions* Options, void* ClientData, const EOS_Lobby_OnLobbyInviteAcceptedCallback NotificationFn)
+{
+    if (Handle == nullptr)
+        return EOS_INVALID_NOTIFICATIONID;
+
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    return pInst->AddNotifyLobbyInviteAccepted(Options, ClientData, NotificationFn);
+}
+
+EOS_DECLARE_FUNC(void) EOS_Lobby_RemoveNotifyLobbyInviteAccepted(EOS_HLobby Handle, EOS_NotificationId InId)
+{
+    if (Handle == nullptr)
+        return;
+
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    pInst->RemoveNotifyLobbyInviteAccepted(InId);
+}
+
+EOS_DECLARE_FUNC(EOS_NotificationId) EOS_Lobby_AddNotifyJoinLobbyAccepted(EOS_HLobby Handle, const EOS_Lobby_AddNotifyJoinLobbyAcceptedOptions* Options, void* ClientData, const EOS_Lobby_OnJoinLobbyAcceptedCallback NotificationFn)
+{
+    if (Handle == nullptr)
+        return EOS_INVALID_NOTIFICATIONID;
+
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    return pInst->AddNotifyJoinLobbyAccepted(Options, ClientData, NotificationFn);
+}
+
+EOS_DECLARE_FUNC(void) EOS_Lobby_RemoveNotifyJoinLobbyAccepted(EOS_HLobby Handle, EOS_NotificationId InId)
+{
+    if (Handle == nullptr)
+        return;
+
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    pInst->RemoveNotifyJoinLobbyAccepted(InId);
+}
+
+EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_CopyLobbyDetailsHandleByInviteId(EOS_HLobby Handle, const EOS_Lobby_CopyLobbyDetailsHandleByInviteIdOptions* Options, EOS_HLobbyDetails* OutLobbyDetailsHandle)
+{
+    if (Handle == nullptr)
+        return EOS_EResult::EOS_InvalidParameters;
+
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    return pInst->CopyLobbyDetailsHandleByInviteId(Options, OutLobbyDetailsHandle);
+}
+
+EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_CopyLobbyDetailsHandleByUiEventId(EOS_HLobby Handle, const EOS_Lobby_CopyLobbyDetailsHandleByUiEventIdOptions* Options, EOS_HLobbyDetails* OutLobbyDetailsHandle)
+{
+    if (Handle == nullptr)
+        return EOS_EResult::EOS_InvalidParameters;
+
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    return pInst->CopyLobbyDetailsHandleByUiEventId(Options, OutLobbyDetailsHandle);
+}
+
+EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_CreateLobbySearch(EOS_HLobby Handle, const EOS_Lobby_CreateLobbySearchOptions* Options, EOS_HLobbySearch* OutLobbySearchHandle)
+{
+    if (Handle == nullptr)
+        return EOS_EResult::EOS_InvalidParameters;
+
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    return pInst->CreateLobbySearch(Options, OutLobbySearchHandle);
 }
 
 EOS_DECLARE_FUNC(void) EOS_Lobby_SendInvite(EOS_HLobby Handle, const EOS_Lobby_SendInviteOptions* Options, void* ClientData, const EOS_Lobby_OnSendInviteCallback CompletionDelegate)
@@ -192,87 +282,6 @@ EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_GetInviteIdByIndex(EOS_HLobby Handle, co
     return pInst->GetInviteIdByIndex(Options, OutBuffer, InOutBufferLength);
 }
 
-EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_CreateLobbySearch(EOS_HLobby Handle, const EOS_Lobby_CreateLobbySearchOptions* Options, EOS_HLobbySearch* OutLobbySearchHandle)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
-    return pInst->CreateLobbySearch(Options, OutLobbySearchHandle);
-}
-
-EOS_DECLARE_FUNC(EOS_NotificationId) EOS_Lobby_AddNotifyLobbyInviteReceived(EOS_HLobby Handle, const EOS_Lobby_AddNotifyLobbyInviteReceivedOptions* Options, void* ClientData, const EOS_Lobby_OnLobbyInviteReceivedCallback NotificationFn)
-{
-    if (Handle == nullptr)
-        return EOS_INVALID_NOTIFICATIONID;
-
-    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
-    return pInst->AddNotifyLobbyInviteReceived(Options, ClientData, NotificationFn);
-}
-
-EOS_DECLARE_FUNC(void) EOS_Lobby_RemoveNotifyLobbyInviteReceived(EOS_HLobby Handle, EOS_NotificationId InId)
-{
-    if (Handle == nullptr)
-        return;
-
-    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
-    pInst->RemoveNotifyLobbyInviteReceived(InId);
-}
-
-EOS_DECLARE_FUNC(EOS_NotificationId) EOS_Lobby_AddNotifyLobbyInviteAccepted(EOS_HLobby Handle, const EOS_Lobby_AddNotifyLobbyInviteAcceptedOptions* Options, void* ClientData, const EOS_Lobby_OnLobbyInviteAcceptedCallback NotificationFn)
-{
-    if (Handle == nullptr)
-        return EOS_INVALID_NOTIFICATIONID;
-
-    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
-    return pInst->AddNotifyLobbyInviteAccepted(Options, ClientData, NotificationFn);
-}
-
-EOS_DECLARE_FUNC(void) EOS_Lobby_RemoveNotifyLobbyInviteAccepted(EOS_HLobby Handle, EOS_NotificationId InId)
-{
-    if (Handle == nullptr)
-        return;
-
-    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
-    return pInst->RemoveNotifyLobbyInviteAccepted(InId);
-}
-
-EOS_DECLARE_FUNC(EOS_NotificationId) EOS_Lobby_AddNotifyJoinLobbyAccepted(EOS_HLobby Handle, const EOS_Lobby_AddNotifyJoinLobbyAcceptedOptions* Options, void* ClientData, const EOS_Lobby_OnJoinLobbyAcceptedCallback NotificationFn)
-{
-    if (Handle == nullptr)
-        return EOS_INVALID_NOTIFICATIONID;
-
-    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
-    return pInst->AddNotifyJoinLobbyAccepted(Options, ClientData, NotificationFn);
-}
-
-EOS_DECLARE_FUNC(void) EOS_Lobby_RemoveNotifyJoinLobbyAccepted(EOS_HLobby Handle, EOS_NotificationId InId)
-{
-    if (Handle == nullptr)
-        return;
-
-    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
-    return pInst->RemoveNotifyJoinLobbyAccepted(InId);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_CopyLobbyDetailsHandleByInviteId(EOS_HLobby Handle, const EOS_Lobby_CopyLobbyDetailsHandleByInviteIdOptions* Options, EOS_HLobbyDetails* OutLobbyDetailsHandle)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
-    return pInst->CopyLobbyDetailsHandleByInviteId(Options, OutLobbyDetailsHandle);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_CopyLobbyDetailsHandleByUiEventId(EOS_HLobby Handle, const EOS_Lobby_CopyLobbyDetailsHandleByUiEventIdOptions* Options, EOS_HLobbyDetails* OutLobbyDetailsHandle)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
-    return pInst->CopyLobbyDetailsHandleByUiEventId(Options, OutLobbyDetailsHandle);
-}
-
 EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_CopyLobbyDetailsHandle(EOS_HLobby Handle, const EOS_Lobby_CopyLobbyDetailsHandleOptions* Options, EOS_HLobbyDetails* OutLobbyDetailsHandle)
 {
     if (Handle == nullptr)
@@ -282,291 +291,63 @@ EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_CopyLobbyDetailsHandle(EOS_HLobby Handle
     return pInst->CopyLobbyDetailsHandle(Options, OutLobbyDetailsHandle);
 }
 
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyModification_SetBucketId(EOS_HLobbyModification Handle, const EOS_LobbyModification_SetBucketIdOptions* Options)
+EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_GetConnectString(EOS_HLobby Handle, const EOS_Lobby_GetConnectStringOptions* Options, char* OutBuffer, uint32_t* InOutBufferLength)
 {
     if (Handle == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    auto pInst = reinterpret_cast<EOSSDK_LobbyModification*>(Handle);
-    return pInst->SetBucketId(Options);
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    return pInst->GetConnectString(Options, OutBuffer, InOutBufferLength);
 }
 
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyModification_SetPermissionLevel(EOS_HLobbyModification Handle, const EOS_LobbyModification_SetPermissionLevelOptions* Options)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyModification*>(Handle);
-    return pInst->SetPermissionLevel(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyModification_SetMaxMembers(EOS_HLobbyModification Handle, const EOS_LobbyModification_SetMaxMembersOptions* Options)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyModification*>(Handle);
-    return pInst->SetMaxMembers(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyModification_SetInvitesAllowed(EOS_HLobbyModification Handle, const EOS_LobbyModification_SetInvitesAllowedOptions* Options)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyModification*>(Handle);
-    return pInst->SetInvitesAllowed(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyModification_AddAttribute(EOS_HLobbyModification Handle, const EOS_LobbyModification_AddAttributeOptions* Options)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyModification*>(Handle);
-    return pInst->AddAttribute(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyModification_RemoveAttribute(EOS_HLobbyModification Handle, const EOS_LobbyModification_RemoveAttributeOptions* Options)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyModification*>(Handle);
-    return pInst->RemoveAttribute(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyModification_AddMemberAttribute(EOS_HLobbyModification Handle, const EOS_LobbyModification_AddMemberAttributeOptions* Options)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyModification*>(Handle);
-    return pInst->AddMemberAttribute(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyModification_RemoveMemberAttribute(EOS_HLobbyModification Handle, const EOS_LobbyModification_RemoveMemberAttributeOptions* Options)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyModification*>(Handle);
-    return pInst->RemoveMemberAttribute(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_ProductUserId) EOS_LobbyDetails_GetLobbyOwner(EOS_HLobbyDetails Handle, const EOS_LobbyDetails_GetLobbyOwnerOptions* Options)
-{
-    if (Handle == nullptr)
-        return nullptr;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(Handle);
-    return pInst->GetLobbyOwner(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyDetails_CopyInfo(EOS_HLobbyDetails Handle, const EOS_LobbyDetails_CopyInfoOptions* Options, EOS_LobbyDetails_Info** OutLobbyDetailsInfo)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(Handle);
-    return pInst->CopyInfo(Options, OutLobbyDetailsInfo);
-}
-
-EOS_DECLARE_FUNC(uint32_t) EOS_LobbyDetails_GetAttributeCount(EOS_HLobbyDetails Handle, const EOS_LobbyDetails_GetAttributeCountOptions* Options)
-{
-    if (Handle == nullptr)
-        return 0;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(Handle);
-    return pInst->GetAttributeCount(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyDetails_CopyAttributeByIndex(EOS_HLobbyDetails Handle, const EOS_LobbyDetails_CopyAttributeByIndexOptions* Options, EOS_Lobby_Attribute** OutAttribute)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(Handle);
-    return pInst->CopyAttributeByIndex(Options, OutAttribute);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyDetails_CopyAttributeByKey(EOS_HLobbyDetails Handle, const EOS_LobbyDetails_CopyAttributeByKeyOptions* Options, EOS_Lobby_Attribute** OutAttribute)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(Handle);
-    return pInst->CopyAttributeByKey(Options, OutAttribute);
-}
-
-EOS_DECLARE_FUNC(uint32_t) EOS_LobbyDetails_GetMemberCount(EOS_HLobbyDetails Handle, const EOS_LobbyDetails_GetMemberCountOptions* Options)
-{
-    if (Handle == nullptr)
-        return 0;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(Handle);
-    return pInst->GetMemberCount(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_ProductUserId) EOS_LobbyDetails_GetMemberByIndex(EOS_HLobbyDetails Handle, const EOS_LobbyDetails_GetMemberByIndexOptions* Options)
-{
-    if (Handle == nullptr)
-        return nullptr;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(Handle);
-    return pInst->GetMemberByIndex(Options);
-}
-
-EOS_DECLARE_FUNC(uint32_t) EOS_LobbyDetails_GetMemberAttributeCount(EOS_HLobbyDetails Handle, const EOS_LobbyDetails_GetMemberAttributeCountOptions* Options)
-{
-    if (Handle == nullptr)
-        return 0;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(Handle);
-    return pInst->GetMemberAttributeCount(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyDetails_CopyMemberAttributeByIndex(EOS_HLobbyDetails Handle, const EOS_LobbyDetails_CopyMemberAttributeByIndexOptions* Options, EOS_Lobby_Attribute** OutAttribute)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(Handle);
-    return pInst->CopyMemberAttributeByIndex(Options, OutAttribute);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbyDetails_CopyMemberAttributeByKey(EOS_HLobbyDetails Handle, const EOS_LobbyDetails_CopyMemberAttributeByKeyOptions* Options, EOS_Lobby_Attribute** OutAttribute)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(Handle);
-    return pInst->CopyMemberAttributeByKey(Options, OutAttribute);
-}
-
-EOS_DECLARE_FUNC(void) EOS_LobbySearch_Find(EOS_HLobbySearch Handle, const EOS_LobbySearch_FindOptions* Options, void* ClientData, const EOS_LobbySearch_OnFindCallback CompletionDelegate)
+EOS_DECLARE_FUNC(void) EOS_Lobby_ParseConnectString(EOS_HLobby Handle, const EOS_Lobby_ParseConnectStringOptions* Options, void* ClientData, const EOS_Lobby_OnParseConnectStringCallback CompletionDelegate)
 {
     if (Handle == nullptr)
         return;
 
-    auto pInst = reinterpret_cast<EOSSDK_LobbySearch*>(Handle);
-    pInst->Find(Options, ClientData, CompletionDelegate);
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    pInst->ParseConnectString(Options, ClientData, CompletionDelegate);
 }
 
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbySearch_SetLobbyId(EOS_HLobbySearch Handle, const EOS_LobbySearch_SetLobbyIdOptions* Options)
+// ---------------------------------------------------------------------------
+// Lobby RTC room stubs
+// Added to fix UE5 crash: game calls these after CreateLobby with bRTCRoomEnabled=true.
+// GetRTCRoomName returns a stable non-null name; IsRTCRoomConnected returns false;
+// AddNotifyRTCRoomConnectionChanged registers a slot so RemoveNotify won't assert.
+// ---------------------------------------------------------------------------
+
+EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_GetRTCRoomName(EOS_HLobby Handle, const EOS_Lobby_GetRTCRoomNameOptions* Options, char* OutBuffer, uint32_t* InOutBufferLength)
 {
     if (Handle == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    auto pInst = reinterpret_cast<EOSSDK_LobbySearch*>(Handle);
-    return pInst->SetLobbyId(Options);
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    return pInst->GetRTCRoomName(Options, OutBuffer, InOutBufferLength);
 }
 
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbySearch_SetTargetUserId(EOS_HLobbySearch Handle, const EOS_LobbySearch_SetTargetUserIdOptions* Options)
+EOS_DECLARE_FUNC(EOS_EResult) EOS_Lobby_IsRTCRoomConnected(EOS_HLobby Handle, const EOS_Lobby_IsRTCRoomConnectedOptions* Options, EOS_Bool* bOutIsConnected)
 {
     if (Handle == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
-    auto pInst = reinterpret_cast<EOSSDK_LobbySearch*>(Handle);
-    return pInst->SetTargetUserId(Options);
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    return pInst->IsRTCRoomConnected(Options, bOutIsConnected);
 }
 
-/** NYI */
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbySearch_SetParameter(EOS_HLobbySearch Handle, const EOS_LobbySearch_SetParameterOptions* Options)
+EOS_DECLARE_FUNC(EOS_NotificationId) EOS_Lobby_AddNotifyRTCRoomConnectionChanged(EOS_HLobby Handle, const EOS_Lobby_AddNotifyRTCRoomConnectionChangedOptions* Options, void* ClientData, const EOS_Lobby_OnRTCRoomConnectionChangedCallback NotificationFn)
 {
     if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
+        return EOS_INVALID_NOTIFICATIONID;
 
-    auto pInst = reinterpret_cast<EOSSDK_LobbySearch*>(Handle);
-    return pInst->SetParameter(Options);
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    return pInst->AddNotifyRTCRoomConnectionChanged(Options, ClientData, NotificationFn);
 }
 
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbySearch_RemoveParameter(EOS_HLobbySearch Handle, const EOS_LobbySearch_RemoveParameterOptions* Options)
+EOS_DECLARE_FUNC(void) EOS_Lobby_RemoveNotifyRTCRoomConnectionChanged(EOS_HLobby Handle, EOS_NotificationId InId)
 {
     if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbySearch*>(Handle);
-    return pInst->RemoveParameter(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbySearch_SetMaxResults(EOS_HLobbySearch Handle, const EOS_LobbySearch_SetMaxResultsOptions* Options)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbySearch*>(Handle);
-    return pInst->SetMaxResults(Options);
-}
-
-EOS_DECLARE_FUNC(uint32_t) EOS_LobbySearch_GetSearchResultCount(EOS_HLobbySearch Handle, const EOS_LobbySearch_GetSearchResultCountOptions* Options)
-{
-    if (Handle == nullptr)
-        return 0;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbySearch*>(Handle);
-    return pInst->GetSearchResultCount(Options);
-}
-
-EOS_DECLARE_FUNC(EOS_EResult) EOS_LobbySearch_CopySearchResultByIndex(EOS_HLobbySearch Handle, const EOS_LobbySearch_CopySearchResultByIndexOptions* Options, EOS_HLobbyDetails* OutLobbyDetailsHandle)
-{
-    if (Handle == nullptr)
-        return EOS_EResult::EOS_InvalidParameters;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbySearch*>(Handle);
-    return pInst->CopySearchResultByIndex(Options, OutLobbyDetailsHandle);
-}
-
-EOS_DECLARE_FUNC(void) EOS_LobbyModification_Release(EOS_HLobbyModification LobbyModificationHandle)
-{
-    if (LobbyModificationHandle == nullptr)
         return;
 
-    auto pInst = reinterpret_cast<EOSSDK_LobbyModification*>(LobbyModificationHandle);
-    pInst->Release();
-}
-
-EOS_DECLARE_FUNC(void) EOS_LobbyDetails_Release(EOS_HLobbyDetails LobbyHandle)
-{
-    if (LobbyHandle == nullptr)
-        return;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbyDetails*>(LobbyHandle);
-    pInst->Release();
-}
-
-EOS_DECLARE_FUNC(void) EOS_LobbySearch_Release(EOS_HLobbySearch LobbySearchHandle)
-{
-    if (LobbySearchHandle == nullptr)
-        return;
-
-    auto pInst = reinterpret_cast<EOSSDK_LobbySearch*>(LobbySearchHandle);
-    pInst->Release();
-}
-
-EOS_DECLARE_FUNC(void) EOS_LobbyDetails_Info_Release(EOS_LobbyDetails_Info* LobbyDetailsInfo)
-{
-    TRACE_FUNC();
-    if (LobbyDetailsInfo == nullptr)
-        return;
-
-    delete[]LobbyDetailsInfo->LobbyId;
-    delete LobbyDetailsInfo;
-}
-
-EOS_DECLARE_FUNC(void) EOS_Lobby_Attribute_Release(EOS_Lobby_Attribute* LobbyAttribute)
-{
-    TRACE_FUNC();
-
-    if (LobbyAttribute == nullptr)
-        return;
-
-    if (LobbyAttribute->Data->ValueType == EOS_ESessionAttributeType::EOS_AT_STRING)
-        delete[]LobbyAttribute->Data->Value.AsUtf8;
-
-    delete[]LobbyAttribute->Data->Key;
-    delete LobbyAttribute->Data;
-
-    delete LobbyAttribute;
+    auto pInst = reinterpret_cast<EOSSDK_Lobby*>(Handle);
+    pInst->RemoveNotifyRTCRoomConnectionChanged(InId);
 }

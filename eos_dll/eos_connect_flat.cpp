@@ -102,7 +102,7 @@ EOS_DECLARE_FUNC(void) EOS_Connect_QueryProductUserIdMappings(EOS_HConnect Handl
     pInst->QueryProductUserIdMappings(Options, ClientData, CompletionDelegate);
 }
 
-EOS_DECLARE_FUNC(EOS_ProductUserId) EOS_Connect_GetExternalAccountMapping(EOS_HConnect Handle, const EOS_Connect_GetExternalAccountMappingsOptions* Options)
+EOS_DECLARE_FUNC(EOS_ProductUserId) EOS_Connect_GetExternalAccountMapping(EOS_HConnect Handle, const EOS_Connect_GetExternalAccountMappingOptions* Options)
 {
     if (Handle == nullptr)
         return nullptr;
@@ -183,7 +183,7 @@ EOS_DECLARE_FUNC(void) EOS_Connect_RemoveNotifyLoginStatusChanged(EOS_HConnect H
     pInst->RemoveNotifyLoginStatusChanged(InId);
 }
 
-EOS_DECLARE_FUNC(uint32_t) EOS_Connect_GetProductUserExternalAccountCount(EOS_HConnect Handle, const EOS_Connect_GetProductUserExternalAccountCountOptions * Options)
+EOS_DECLARE_FUNC(int32_t) EOS_Connect_GetProductUserExternalAccountCount(EOS_HConnect Handle, const EOS_Connect_GetProductUserExternalAccountCountOptions* Options)
 {
     if (Handle == nullptr)
         return 0;
@@ -219,19 +219,55 @@ EOS_DECLARE_FUNC(EOS_EResult) EOS_Connect_CopyProductUserExternalAccountByAccoun
     return pInst->CopyProductUserExternalAccountByAccountId(Options, OutExternalAccountInfo);
 }
 
-EOS_DECLARE_FUNC(EOS_EResult) EOS_Connect_CopyProductUserInfo(EOS_HConnect Handle, const EOS_Connect_CopyProductUserInfoOptions* Options, EOS_Connect_ExternalAccountInfo** OutExternalAccountInfo)
+EOS_DECLARE_FUNC(EOS_EResult) EOS_Connect_CopyProductUserInfo(EOS_HConnect Handle, const EOS_Connect_CopyProductUserInfoOptions* Options, EOS_Connect_ExternalAccountInfo** OutProductUserInfo)
 {
     if (Handle == nullptr)
         return EOS_EResult::EOS_InvalidParameters;
 
     auto pInst = reinterpret_cast<EOSSDK_Connect*>(Handle);
-    return pInst->CopyProductUserInfo(Options, OutExternalAccountInfo);
+    return pInst->CopyProductUserInfo(Options, OutProductUserInfo);
 }
 
 EOS_DECLARE_FUNC(void) EOS_Connect_ExternalAccountInfo_Release(EOS_Connect_ExternalAccountInfo* ExternalAccountInfo)
 {
-    if (ExternalAccountInfo != nullptr)
-    {
-        delete ExternalAccountInfo;
-    }
+    TRACE_FUNC();
+    if (ExternalAccountInfo == nullptr)
+        return;
+
+    delete[] ExternalAccountInfo->AccountId;
+    delete[] ExternalAccountInfo->DisplayName;
+    delete ExternalAccountInfo;
+}
+
+// ---------------------------------------------------------------------------
+// EOS_Connect_CopyIdToken / EOS_Connect_IdToken_Release / EOS_Connect_VerifyIdToken
+// Added to fix UE5 boot crash: CopyIdToken was missing, returning null.
+// ---------------------------------------------------------------------------
+
+EOS_DECLARE_FUNC(EOS_EResult) EOS_Connect_CopyIdToken(EOS_HConnect Handle, const EOS_Connect_CopyIdTokenOptions* Options, EOS_Connect_IdToken** OutIdToken)
+{
+    if (Handle == nullptr)
+        return EOS_EResult::EOS_InvalidParameters;
+
+    auto pInst = reinterpret_cast<EOSSDK_Connect*>(Handle);
+    return pInst->CopyIdToken(Options, OutIdToken);
+}
+
+EOS_DECLARE_FUNC(void) EOS_Connect_IdToken_Release(EOS_Connect_IdToken* IdToken)
+{
+    TRACE_FUNC();
+    if (IdToken == nullptr)
+        return;
+
+    delete[] IdToken->JsonWebToken;
+    delete IdToken;
+}
+
+EOS_DECLARE_FUNC(void) EOS_Connect_VerifyIdToken(EOS_HConnect Handle, const EOS_Connect_VerifyIdTokenOptions* Options, void* ClientData, const EOS_Connect_OnVerifyIdTokenCallback CompletionDelegate)
+{
+    if (Handle == nullptr)
+        return;
+
+    auto pInst = reinterpret_cast<EOSSDK_Connect*>(Handle);
+    pInst->VerifyIdToken(Options, ClientData, CompletionDelegate);
 }

@@ -133,6 +133,15 @@ EOS_DECLARE_FUNC(EOS_EResult) CLANG_GCC_DONT_OPTIMIZE EOS_Auth_CopyUserAuthToken
 #pragma optimize("", on)
 #endif
 
+EOS_DECLARE_FUNC(void) EOS_Auth_RemoveNotifyLoginStatusChanged(EOS_HAuth Handle, EOS_NotificationId InId)
+{
+    if (Handle == nullptr)
+        return;
+
+    auto pInst = reinterpret_cast<EOSSDK_Auth*>(Handle);
+    pInst->RemoveNotifyLoginStatusChanged(InId);
+}
+
 EOS_DECLARE_FUNC(EOS_NotificationId) EOS_Auth_AddNotifyLoginStatusChangedOld(EOS_HAuth Handle, void* ClientData, const EOS_Auth_OnLoginStatusChangedCallback Notification)
 {
     if (Handle == nullptr)
@@ -172,16 +181,6 @@ EOS_DECLARE_FUNC(EOS_NotificationId) CLANG_GCC_DONT_OPTIMIZE EOS_Auth_AddNotifyL
 #pragma optimize("", on)
 #endif
 
-EOS_DECLARE_FUNC(void) EOS_Auth_RemoveNotifyLoginStatusChanged(EOS_HAuth Handle, EOS_NotificationId InId)
-{
-    if (Handle == nullptr)
-        return;
-
-    auto pInst = reinterpret_cast<EOSSDK_Auth*>(Handle);
-    pInst->RemoveNotifyLoginStatusChanged(InId);
-}
-
-
 EOS_DECLARE_FUNC(void) EOS_Auth_Token_Release(EOS_Auth_Token* AuthToken)
 {
     TRACE_FUNC();
@@ -190,9 +189,40 @@ EOS_DECLARE_FUNC(void) EOS_Auth_Token_Release(EOS_Auth_Token* AuthToken)
 
     delete[] AuthToken->AccessToken;
     delete[] AuthToken->RefreshToken;
-
     delete[] AuthToken->ExpiresAt;
     delete[] AuthToken->RefreshExpiresAt;
     delete AuthToken;
 }
 
+// ---------------------------------------------------------------------------
+// EOS_Auth_CopyIdToken / EOS_Auth_IdToken_Release / EOS_Auth_VerifyIdToken
+// Added to fix UE5 boot crash: CopyIdToken was missing, returning null.
+// ---------------------------------------------------------------------------
+
+EOS_DECLARE_FUNC(EOS_EResult) EOS_Auth_CopyIdToken(EOS_HAuth Handle, const EOS_Auth_CopyIdTokenOptions* Options, EOS_Auth_IdToken** OutIdToken)
+{
+    if (Handle == nullptr)
+        return EOS_EResult::EOS_InvalidParameters;
+
+    auto pInst = reinterpret_cast<EOSSDK_Auth*>(Handle);
+    return pInst->CopyIdToken(Options, OutIdToken);
+}
+
+EOS_DECLARE_FUNC(void) EOS_Auth_IdToken_Release(EOS_Auth_IdToken* IdToken)
+{
+    TRACE_FUNC();
+    if (IdToken == nullptr)
+        return;
+
+    delete[] IdToken->JsonWebToken;
+    delete IdToken;
+}
+
+EOS_DECLARE_FUNC(void) EOS_Auth_VerifyIdToken(EOS_HAuth Handle, const EOS_Auth_VerifyIdTokenOptions* Options, void* ClientData, const EOS_Auth_OnVerifyIdTokenCallback CompletionDelegate)
+{
+    if (Handle == nullptr)
+        return;
+
+    auto pInst = reinterpret_cast<EOSSDK_Auth*>(Handle);
+    pInst->VerifyIdToken(Options, ClientData, CompletionDelegate);
+}
