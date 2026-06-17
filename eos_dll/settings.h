@@ -1,12 +1,12 @@
 /*
- * Copyright (C) 2019 Nemirtingas
+ * Copyright (C) 2020 Nemirtingas
  * This file is part of the Nemirtingas's Epic Emulator
  *
  * The Nemirtingas's Epic Emulator is free software; you can redistribute it
  * and/or modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * The Nemirtingas's Epic Emulator is distributed in the hope that it will be
  * useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
@@ -17,43 +17,27 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __INCLUDED_SETTINGS_H__
-#define __INCLUDED_SETTINGS_H__
+#pragma once
 
 #include "common_includes.h"
 
-class Settings
+struct Settings
 {
-    Settings();
-    Settings(Settings const&) = delete;
-    Settings(Settings&&) = delete;
-    Settings& operator=(Settings const&) = delete;
-    Settings& operator=(Settings&&) = delete;
-public:
+    std::string username;
+    std::string userid;
+    std::string language;
+
+    // EOS Platform identity fields (SDK 1.8+)
+    std::string product_id;
+    std::string sandbox_id;
+    std::string deployment_id;
+
+    // Networking
+    std::string custom_broadcasts;
+    uint16_t    p2p_port;
+    uint16_t    max_p2p_ports_tried;
+
     static Settings& Inst();
 
-private:
-    static constexpr const char* settings_file_name = "NemirtingasEpicEmu.json";
-
-    std::string config_path;
-
-public:
-    EOS_EpicAccountId userid;
-    EOS_ProductUserId productuserid;
-    std::string username;
-    std::string language;
-    std::string savepath;
-    std::string gamename;
-    std::string appid;
-    std::string custom_broadcast;
-    bool unlock_dlcs;
-    bool enable_overlay;
-    bool disable_online_networking;
-
-    ~Settings();
-
     void load_settings();
-    void save_settings();
 };
-
-#endif

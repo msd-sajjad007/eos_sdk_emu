@@ -6,7 +6,7 @@
  * and/or modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 3 of the License, or (at your option) any later version.
- * 
+ *
  * The Nemirtingas's Epic Emulator is distributed in the hope that it will be
  * useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
@@ -18,203 +18,72 @@
  */
 
 #include "settings.h"
-#include "eos_client_api.h"
+#include "os_funcs.h"
+#include "Log.h"
 
-template<typename T>
-T get_setting(nlohmann::json& settings, std::string const& key, T default_val)
-{
-    T val;
-    try
-    {
-        val = settings[key].get<T>();
-    }
-    catch (...)
-    {
-        val = default_val;
-        settings[key] = default_val;
-    }
-    return val;
-}
+#include <nlohmann/json.hpp>
+#include <fstream>
 
-Settings::Settings()
-{
-    load_settings();
-}
-
-Settings::~Settings()
-{
-
-}
-
-static bool load_json(std::string const& file_path, nlohmann::json& json)
-{
-    std::ifstream file(file_path);
-    if (file)
-    {
-        file.seekg(0, std::ios::end);
-        size_t size = static_cast<size_t>(file.tellg());
-        file.seekg(0, std::ios::beg);
-
-        std::string buffer(size, '\0');
-
-        file.read(&buffer[0], size);
-        file.close();
-
-        try
-        {
-            json = std::move(nlohmann::json::parse(buffer));
-
-            return true;
-        }
-        catch (std::exception& e)
-        {
-            APP_LOG(Log::LogLevel::ERR, "Error while parsing JSON %s: %s", file_path.c_str(), e.what());
-        }
-    }
-    else
-    {
-        APP_LOG(Log::LogLevel::WARN, "File not found: %s", file_path.c_str());
-    }
-    return false;
-}
-
-static bool save_json(std::string const& file_path, nlohmann::json const& json)
-{
-    std::ofstream file(file_path, std::ios::trunc | std::ios::out);
-    if (!file)
-    {
-        APP_LOG(Log::LogLevel::ERR, "Failed to save: %s", file_path.c_str());
-        return false;
-    }
-    file << std::setw(2) << json;
-    return true;
-}
+using json = nlohmann::json;
 
 Settings& Settings::Inst()
 {
-    static Settings inst;
-    return inst;
+    static Settings _inst;
+    return _inst;
 }
 
 void Settings::load_settings()
 {
-    bool default_config = false;
+    auto settings_path = GetExePath() / "eos_settings.json";
 
-    GLOBAL_LOCK();
-
-    nlohmann::json settings;
-    config_path = std::move(FileManager::dirname(get_executable_path()) + settings_file_name);
-
-    if (!load_json(config_path, settings))
+    std::ifstream settings_file(settings_path);
+    if (!settings_file.is_open())
     {
-        default_config = true;
+        APP_LOG(Log::LogLevel::WARN, "Could not open settings file: %s", settings_path.string().c_str());
+        return;
     }
 
-#ifndef DISABLE_LOG
-    Log::LogLevel llvl;
-    switchstr(get_setting(settings, "log_level", std::string("OFF")))
+    json settings_json;
+    try
     {
-        casestr("TRACE"): llvl = Log::LogLevel::TRACE; break;
-        casestr("DEBUG"): llvl = Log::LogLevel::DEBUG; break;
-        casestr("INFO") : llvl = Log::LogLevel::INFO ; break;
-        casestr("WARN") : llvl = Log::LogLevel::WARN ; break;
-        casestr("ERR")  : llvl = Log::LogLevel::ERR  ; break;
-        casestr("FATAL"): llvl = Log::LogLevel::FATAL; break;
-        casestr("OFF")  :
-        default         : llvl = Log::LogLevel::OFF;
+        settings_file >> settings_json;
     }
-    APP_LOG(Log::LogLevel::INFO, "Setting log level to: %s", Log::loglevel_to_str(llvl));
-    Log::set_loglevel(llvl);
-#endif
-
-    APP_LOG(Log::LogLevel::INFO, "Configuration Path: %s", config_path.c_str());
-    if (default_config)
+    catch (std::exception& e)
     {
-        APP_LOG(Log::LogLevel::WARN, "Error while loading settings, building a default one");
+        APP_LOG(Log::LogLevel::ERR, "Failed to parse settings file: %s", e.what());
+        return;
     }
 
-    APP_LOG(Log::LogLevel::INFO, "Emulator version %s", _EMU_VERSION_);
+    // Core identity
+    if (settings_json.contains("username") && settings_json["username"].is_string())
+        username = settings_json["username"].get<std::string>();
 
-    username = get_setting(settings, "username", std::string(u8"DefaultName"));
-    if (username.empty() || !utf8::is_valid(username.begin(), username.end()))
-    {
-        APP_LOG(Log::LogLevel::WARN, "Invalid username, resetting to default name.");
-        username = u8"DefaultName";
-    }
+    if (settings_json.contains("userid") && settings_json["userid"].is_string())
+        userid = settings_json["userid"].get<std::string>();
 
-    settings["username"] = username;
+    if (settings_json.contains("language") && settings_json["language"].is_string())
+        language = settings_json["language"].get<std::string>();
 
-    userid = GetEpicUserId(get_setting(settings, "epicid", std::string("")));
-    if (!userid->IsValid())
-    {
-        if (username == "DefaultName")
-        {
-            APP_LOG(Log::LogLevel::INFO, "Username == DefaultName, generating random epic id");
-            userid = GetEpicUserId(generate_epic_id_user());
-        }
-        else
-        {
-            APP_LOG(Log::LogLevel::INFO, "Username != DefaultName, generating random epic id based on your username");
-            userid = GetEpicUserId(generate_epic_id_user_from_name(username));
-        }
-    }
+    // EOS Platform identity fields (required by SDK 1.8+ games)
+    if (settings_json.contains("product_id") && settings_json["product_id"].is_string())
+        product_id = settings_json["product_id"].get<std::string>();
 
-    language                  = get_setting(settings, "language", std::string("en"));
-    gamename                  = get_setting(settings, "gamename", std::string("DefaultGameName"));
-    appid                     = get_setting(settings, "appid", std::string("InvalidAppid"));
-    unlock_dlcs               = get_setting(settings, "unlock_dlcs", bool(true));
-    enable_overlay            = get_setting(settings, "enable_overlay", bool(true));
-    disable_online_networking = get_setting(settings, "disable_online_networking", bool(false));
-    custom_broadcast          = get_setting(settings, "custom_broadcast", std::string(""));
-    savepath                  = get_setting(settings, "savepath", std::string("appdata"));
+    if (settings_json.contains("sandbox_id") && settings_json["sandbox_id"].is_string())
+        sandbox_id = settings_json["sandbox_id"].get<std::string>();
 
-    std::string productuserid = get_setting(settings, "productuserid", generate_account_id_from_name(appid + userid->to_string()));
-    this->productuserid = GetProductUserId(productuserid);
+    if (settings_json.contains("deployment_id") && settings_json["deployment_id"].is_string())
+        deployment_id = settings_json["deployment_id"].get<std::string>();
 
-    std::string settings_dir;
-    if (savepath == "appdata")
-    {
-        settings_dir = get_userdata_path();
-    }
-    else if (FileManager::is_absolute(savepath))
-    {
-        settings_dir = savepath;
-    }
-    else
-    {
-        settings_dir = FileManager::join(FileManager::dirname(get_executable_path()), savepath);
-    }
+    // Networking
+    if (settings_json.contains("custom_broadcasts") && settings_json["custom_broadcasts"].is_string())
+        custom_broadcasts = settings_json["custom_broadcasts"].get<std::string>();
 
-    FileManager::set_root_dir(settings_dir);
-    settings_dir = FileManager::root_dir();
-    settings_dir = FileManager::join(settings_dir, emu_savepath, userid->to_string());
+    if (settings_json.contains("p2p_port") && settings_json["p2p_port"].is_number_unsigned())
+        p2p_port = settings_json["p2p_port"].get<uint16_t>();
 
-    //load_avatar(settings_dir);
+    if (settings_json.contains("max_p2p_ports_tried") && settings_json["max_p2p_ports_tried"].is_number_unsigned())
+        max_p2p_ports_tried = settings_json["max_p2p_ports_tried"].get<uint16_t>();
 
-    FileManager::set_root_dir(FileManager::join(settings_dir, appid));
-    
-    save_settings();
-}
-
-void Settings::save_settings()
-{
-    nlohmann::json settings;
-    APP_LOG(Log::LogLevel::INFO, "Saving emu settings: %s", config_path.c_str());
-
-    settings["appid"]                     = appid;
-    settings["username"]                  = username;
-    settings["epicid"]                    = userid->to_string();
-    settings["productuserid"]             = productuserid->to_string();
-    settings["language"]                  = language;
-    settings["gamename"]                  = gamename;
-    settings["unlock_dlcs"]               = unlock_dlcs;
-    settings["enable_overlay"]            = enable_overlay;
-    settings["disable_online_networking"] = disable_online_networking;
-#ifndef DISABLE_LOG
-    settings["log_level"]                 = Log::loglevel_to_str();
-#endif
-    settings["custom_broadcast"]          = custom_broadcast;
-    settings["savepath"]                  = savepath;
-
-    save_json(config_path, settings);
+    APP_LOG(Log::LogLevel::INFO, "Settings loaded: user='%s' id='%s' product='%s' sandbox='%s' deployment='%s'",
+        username.c_str(), userid.c_str(), product_id.c_str(), sandbox_id.c_str(), deployment_id.c_str());
 }
